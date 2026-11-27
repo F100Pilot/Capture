@@ -89,8 +89,18 @@ def test_full_flow(ui, course_server):
     assert s["count"] == 6 and s["runs"] == [s["run"]]
     assert any(seen_assist) and not s["assist"]  # último slide sem «avançar» -> modo assistido
 
+    # apagar à escolha: move para «apagadas» e tira do index.csv
+    run = s["run"]
+    assert request(ui, "POST", f"/api/runs/{run}/delete", body={"files": ["../x.png"]})[0] == 400
+    assert request(ui, "POST", f"/api/runs/{run}/delete", body={"files": ["0006.png"]},
+                   token=False)[0] == 403
+    status, body = request(ui, "POST", f"/api/runs/{run}/delete", body={"files": ["0006.png"]})
+    assert status == 200 and json.loads(body)["deleted"] == 1
+    assert request(ui, "GET", f"/files/{run}/0006.png")[0] == 404
+    rows = json.loads(request(ui, "GET", f"/api/runs/{run}")[1])["rows"]
+    assert len(rows) == 5
     rows = json.loads(request(ui, "GET", f"/api/runs/{s['run']}")[1])["rows"]
-    assert [r["trigger"] for r in rows] == ["start"] + ["click"] * 5
+    assert [r["trigger"] for r in rows] == ["start"] + ["click"] * 4
     status, png = request(ui, "GET", f"/files/{s['run']}/0001.png")
     assert status == 200 and png.startswith(b"\x89PNG")
 

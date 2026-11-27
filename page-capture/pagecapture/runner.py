@@ -233,6 +233,53 @@ def close_gracefully(context: BrowserContext, timeout_ms: int = 5000) -> None:
         log.debug("Erro ao fechar o browser: %s", e)
 
 
+TRASH_DIR = "apagadas"
+
+
+def _write_rows(path: Path, rows: list[dict]) -> None:
+    tmp = path.with_suffix(".csv.tmp")
+    with open(tmp, "w", newline="", encoding="utf-8") as fh:
+        writer = csv.DictWriter(fh, fieldnames=CSV_FIELDS, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(rows)
+    os.replace(tmp, path)
+
+
+def delete_captures(run_dir: Path, files: list[str]) -> int:
+    """Move as capturas escolhidas para run_dir/apagadas (recuperáveis) e tira-as do index.csv.
+
+    As linhas retiradas ficam em apagadas/index.csv. Devolve quantos ficheiros foram movidos.
+    """
+    wanted = set(files)
+    index = run_dir / "index.csv"
+    with open(index, encoding="utf-8", newline="") as fh:
+        rows = list(csv.DictReader(fh))
+    trash = run_dir / TRASH_DIR
+    trash.mkdir(exist_ok=True)
+    keep, removed = [], []
+    for row in rows:
+        (removed if row["file"] in wanted else keep).append(row)
+    moved = 0
+    for row in removed:
+        src = run_dir / row["file"]
+        if not src.is_file():
+            continue
+        dst, i = trash / row["file"], 2
+        while dst.exists():
+            dst, i = trash / f"{src.stem}_{i}{src.suffix}", i + 1
+        os.replace(src, dst)
+        moved += 1
+    trash_index = trash / "index.csv"
+    previous = []
+    if trash_index.is_file():
+        with open(trash_index, encoding="utf-8", newline="") as fh:
+            previous = list(csv.DictReader(fh))
+    _write_rows(trash_index, previous + removed)
+    _write_rows(index, keep)
+    log.info("%d capturas movidas para %s.", moved, trash)
+    return moved
+
+
 class Recorder:
     """Grava as páginas (PNG) e o index.csv. Nunca sobrescreve capturas de outras execuções.
 

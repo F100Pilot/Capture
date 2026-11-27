@@ -28,6 +28,7 @@ from .runner import (
     Runner,
     RunOptions,
     close_gracefully,
+    delete_captures,
     launch_context,
 )
 from .validators import fraction_arg, int_min1, positive_float, url_arg, viewport_arg
@@ -88,7 +89,7 @@ def parse_params(data: dict) -> SessionParams:
             viewport=viewport_arg(field("viewport", "1366x768")),
             sandbox=not bool(data.get("no_sandbox")),
             verbose=bool(data.get("verbose")),
-            keep_last=bool(data.get("keep_last", True)),
+            keep_last=False,  # nada é apagado automaticamente; o utilizador escolhe na galeria
             opts=opts,
         )
     except ValueError:
@@ -187,6 +188,20 @@ class Controller:
         if not path.is_file():
             raise FileNotFoundError(name)
         return path
+
+    def delete(self, run: str, files: object) -> int:
+        """Move capturas escolhidas para a subpasta «apagadas» (só capturas já terminadas)."""
+        if not RUN_RE.match(run) or not (self.out / run / "index.csv").is_file():
+            raise FileNotFoundError(run)
+        if (not isinstance(files, list) or not files or len(files) > 5000
+                or not all(isinstance(f, str) and FILE_RE.match(f) and f.endswith(".png")
+                           for f in files)):
+            raise ValueError("lista de ficheiros inválida")
+        with self._lock:
+            if (self._state in ("opening", "login", "capturing", "stopping")
+                    and self._run_dir is not None and self._run_dir.name == run):
+                raise BusyError("Esta captura ainda está a decorrer; apague depois de terminar.")
+            return delete_captures(self.out / run, files)
 
     # --- ações -------------------------------------------------------------------------------
     def start(self, params: SessionParams) -> None:
@@ -408,6 +423,16 @@ class Handler(BaseHTTPRequestHandler):
             return self._error(HTTPStatus.BAD_REQUEST, "JSON inválido")
 
         ctrl = self.server.controller
+        if m := re.fullmatch(r"/api/runs/([^/]+)/delete", self.path):
+            try:
+                deleted = ctrl.delete(m[1], data.get("files") if isinstance(data, dict) else None)
+            except FileNotFoundError:
+                return self._error(HTTPStatus.NOT_FOUND, "captura não encontrada")
+            except ValueError as e:
+                return self._error(HTTPStatus.BAD_REQUEST, str(e))
+            except BusyError as e:
+                return self._error(HTTPStatus.CONFLICT, str(e))
+            return self._json(HTTPStatus.OK, {"deleted": deleted})
         try:
             if self.path == "/api/start":
                 ctrl.start(parse_params(data))

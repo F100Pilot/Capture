@@ -62,6 +62,12 @@
   .gallery-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
                   justify-content: space-between; margin-bottom: 12px; }
   .gallery-head select { width: auto; min-width: 220px; }
+  .gallery-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+  .gallery-tools button { padding: 6px 10px; font-size: 13px; }
+  .gallery-tools .hint { color: var(--muted); font-size: 12.5px; }
+  .card.selected { outline: 3px solid var(--err); outline-offset: -3px; }
+  .card .pick { display: flex; gap: 6px; align-items: center; font-size: 12.5px; color: var(--muted);
+                margin-top: 4px; cursor: pointer; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
   .card { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--bg); }
   .card img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; object-position: top;
@@ -125,7 +131,6 @@
         </div>
         <label for="ready_alert">Alerta se o SEGUINTE continuar desativado (s)</label>
         <input id="ready_alert" name="ready_alert" type="number" min="1" value="60">
-        <label class="check"><input type="checkbox" name="keep_last" checked> Só o estado final de cada slide (apaga os intermédios)</label>
         <label class="check"><input type="checkbox" name="verbose"> Registo detalhado (diagnóstico)</label>
         <label class="check"><input type="checkbox" name="no_sandbox"> Sem sandbox (só se o browser não abrir)</label>
       </details>
@@ -152,6 +157,12 @@
           <a id="csv" href="#" target="_blank" rel="noopener">index.csv</a>
         </div>
       </div>
+      <div class="gallery-tools">
+        <button id="btn-sel-inter" type="button" title="Em cada slide, marca os estados anteriores ao último">Selecionar intermédios</button>
+        <button id="btn-sel-none" type="button">Limpar seleção</button>
+        <button id="btn-delete" type="button" disabled>Apagar selecionadas</button>
+        <span class="hint">As apagadas vão para a subpasta «apagadas» (recuperáveis).</span>
+      </div>
       <div id="grid" class="grid"></div>
       <p id="grid-empty" class="empty">Ainda não há capturas.</p>
     </section>
@@ -167,6 +178,8 @@
   const $ = id => document.getElementById(id);
   const form = $('form');
   let lastSeq = 0, shownRun = null, shownVersion = -1, shownSig = [], currentRun = null, userPicked = false;
+  let shownRows = [];
+  const selected = new Set();
   let audio = null, assistOn = false;
   const TITLE = document.title;
 
@@ -298,6 +311,8 @@
     const same = run === shownRun && shownSig.every((x, i) => sig[i] === x);
     const known = same ? shownSig.length : 0;
     if (!same) grid.replaceChildren();
+    if (run !== shownRun) selected.clear();
+    for (const f of [...selected]) if (!rows.some(r => r.file === f)) selected.delete(f);
     for (const row of rows.slice(known)) {
       const href = '/files/' + encodeURIComponent(run) + '/' + encodeURIComponent(row.file)
         + '?v=' + encodeURIComponent(row.timestamp_utc);
@@ -313,12 +328,51 @@
       c.textContent = row.control ? 'via ' + row.control
         : ({ manual: 'avanço manual', update: 'informação nova no slide', start: 'página inicial' }[row.trigger] || '—');
       c.title = row.control || ''; meta.appendChild(c);
+      const pick = document.createElement('label'); pick.className = 'pick';
+      const box = document.createElement('input'); box.type = 'checkbox'; box.dataset.file = row.file;
+      box.checked = selected.has(row.file); card.classList.toggle('selected', box.checked);
+      box.addEventListener('change', () => {
+        if (box.checked) selected.add(row.file); else selected.delete(row.file);
+        card.classList.toggle('selected', box.checked); updateSelection();
+      });
+      pick.appendChild(box); pick.appendChild(document.createTextNode('apagar'));
+      meta.appendChild(pick);
       card.appendChild(meta); grid.appendChild(card);
     }
-    shownRun = run; shownSig = sig;
+    shownRun = run; shownSig = sig; shownRows = rows;
+    updateSelection();
     $('grid-empty').hidden = rows.length > 0;
     $('csv').href = '/files/' + encodeURIComponent(run) + '/index.csv';
   }
+
+  // --- seleção e apagar (move para a subpasta «apagadas») -------------------------------
+  function updateSelection() {
+    for (const box of $('grid').querySelectorAll('input[data-file]')) {
+      box.checked = selected.has(box.dataset.file);
+      box.closest('.card').classList.toggle('selected', box.checked);
+    }
+    $('btn-delete').disabled = selected.size === 0;
+    $('btn-delete').textContent = 'Apagar selecionadas' + (selected.size ? ' (' + selected.size + ')' : '');
+  }
+  $('btn-sel-inter').addEventListener('click', () => {
+    // intermédio = há a seguir uma captura «update» do mesmo slide
+    shownRows.forEach((r, i) => {
+      if (shownRows[i + 1] && shownRows[i + 1].trigger === 'update') selected.add(r.file);
+    });
+    updateSelection();
+  });
+  $('btn-sel-none').addEventListener('click', () => { selected.clear(); updateSelection(); });
+  $('btn-delete').addEventListener('click', async () => {
+    if (!shownRun || !selected.size) return;
+    if (!confirm('Mover ' + selected.size + ' capturas para a subpasta «apagadas»?')) return;
+    try {
+      const r = await post('/api/runs/' + encodeURIComponent(shownRun) + '/delete', { files: [...selected] });
+      selected.clear();
+      $('form-error').textContent = '';
+      $('message').textContent = r.deleted + ' capturas movidas para «apagadas».';
+      const run = shownRun; shownRun = null; loadRun(run);  // reconstrói a galeria
+    } catch (e) { $('form-error').textContent = e.message; }
+  });
 
   async function poll() {
     try {

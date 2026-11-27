@@ -77,7 +77,7 @@ Páginas repetidas (quase iguais a uma já gravada) nunca são gravadas; 5 repet
 | `--change-threshold` | `0.003` | fração mínima de píxeis alterados |
 | `--change-timeout` | `15` | segundos à espera de mudança após clique |
 | `--manual-timeout` | `300` | segundos à espera em modo assistido |
-| `--keep-last` | — | um ficheiro por slide: só o estado final (na interface: ligado por omissão) |
+| `--keep-last` | — | só na linha de comandos: apaga automaticamente os estados intermédios de cada slide |
 | `--ready-alert` | `60` | segundos com o SEGUINTE desativado (sem zonas clicáveis) até alertar |
 | `--full-page` | — | só na linha de comandos: grava a página inteira (só 1 captura por página gravada; não usar em Storyline, que se reajusta a cada redimensionamento) |
 | `--headless` | — | sem janela (não permite login manual) |
@@ -108,10 +108,15 @@ espera que fique ativo (até 10 min) e grava cada informação nova que for apar
 
 A ferramenta nunca clica nessas zonas sozinha.
 
-Com «Só o estado final de cada slide» (`--keep-last`), os estados intermédios do slide ficam como
-`NNNN-2.png`, `NNNN-3.png`… e, quando chega o slide seguinte (ou no fim), fica só o último como
-`NNNN.png`. Atenção: se um slide **substitui** conteúdo (em vez de acrescentar), os estados
-intermédios perdem-se; nesse caso desligue a opção.
+### Apagar capturas (à escolha)
+
+Nada é apagado automaticamente pela interface. Na galeria, marque as capturas a apagar (ou use
+**Selecionar intermédios**, que marca em cada slide os estados anteriores ao último) e carregue em
+**Apagar selecionadas**: os ficheiros são movidos para a subpasta `apagadas` (recuperáveis; as
+linhas retiradas do `index.csv` ficam em `apagadas/index.csv`). Só para capturas já terminadas.
+
+`--keep-last` (linha de comandos) apaga os intermédios automaticamente — cuidado: se um slide
+**substitui** conteúdo em vez de acrescentar, os estados intermédios perdem-se.
 
 ### Afinação
 

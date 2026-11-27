@@ -58,3 +58,20 @@ def test_keep_last_only_keeps_final_state_per_slide(tmp_path):
         rows = list(csv.DictReader(fh))
     assert [(r["n"], r["file"], r["trigger"], r["control"]) for r in rows] == [
         ("1", "0001.png", "start", ""), ("2", "0002.png", "click", "button SEGUINTE")]
+
+
+def test_delete_captures_moves_to_trash_and_updates_index(tmp_path):
+    from pagecapture.runner import delete_captures
+
+    with Recorder(tmp_path) as rec:
+        for i in range(1, 4):
+            shot = block_png(i)
+            rec.save(shot, thumbnail(shot), "u", "start" if i == 1 else "update", "", 0.01)
+        run_dir = rec.dir
+    assert delete_captures(run_dir, ["0001.png", "0002.png"]) == 2
+    assert sorted(p.name for p in run_dir.glob("*.png")) == ["0003.png"]
+    assert sorted(p.name for p in (run_dir / "apagadas").glob("*.png")) == ["0001.png", "0002.png"]
+    with open(run_dir / "index.csv", encoding="utf-8") as fh:
+        assert [r["file"] for r in csv.DictReader(fh)] == ["0003.png"]
+    with open(run_dir / "apagadas" / "index.csv", encoding="utf-8") as fh:
+        assert [r["file"] for r in csv.DictReader(fh)] == ["0001.png", "0002.png"]  # rastreável
