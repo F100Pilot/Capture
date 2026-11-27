@@ -69,3 +69,11 @@ def test_blocker_pattern():
         assert rx.search(text), text
     for text in ("Seguinte", "Objetivos do Curso", "Navegação"):
         assert not rx.search(text), text
+
+
+def test_storyline_next_button_from_lms():
+    # <button class="component_base next" aria-label="next slide" disabled>SEGUINTE</button>
+    lms = dict(text="SEGUINTE", aria="next slide", cls="component_base next")
+    assert score(feat(**lms, disabled=True)) is None  # bloqueado -> modo assistido imediato
+    assert score(feat(**lms)) >= 16
+    assert score(feat(text="ANTERIOR", aria="previous slide", cls="component_base prev")) is None
