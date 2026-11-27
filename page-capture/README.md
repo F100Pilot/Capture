@@ -48,6 +48,7 @@ Resultado: `capturas/AAAA-MM-DD_HHMMSS/` com `0001.png`, `0002.png`, … e `inde
 | `--manual-timeout` | `300` | segundos à espera em modo assistido |
 | `--full-page` | — | screenshot da página inteira |
 | `--headless` | — | sem janela (não permite login manual) |
+| `--no-sandbox` | — | desliga a sandbox do browser (ligada por omissão; usar só se o browser não abrir) |
 | `--no-prompt` | — | não esperar ENTER |
 | `-v` | — | registo detalhado (candidatos e pontuações) |
 

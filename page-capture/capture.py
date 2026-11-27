@@ -89,6 +89,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="segundos à espera de avanço manual antes de terminar")
     p.add_argument("--full-page", action="store_true", help="screenshot da página inteira")
     p.add_argument("--headless", action="store_true", help="sem janela (impede login manual)")
+    p.add_argument("--no-sandbox", action="store_true",
+                   help="desligar a sandbox do browser (só se não abrir com ela)")
     p.add_argument("--no-prompt", action="store_true", help="não esperar ENTER antes de capturar")
     p.add_argument("-v", "--verbose", action="store_true", help="registo detalhado")
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
@@ -134,12 +136,12 @@ def main(argv: list[str] | None = None) -> int:
             try:
                 context = pw.chromium.launch_persistent_context(
                     str(args.profile), headless=args.headless, channel=args.channel,
-                    viewport=args.viewport,
+                    viewport=args.viewport, chromium_sandbox=not args.no_sandbox,
                 )
             except PlaywrightError as e:
                 log.error("O browser não abriu: %s", str(e).splitlines()[0])
                 log.error("Experimente: python -m playwright install chromium "
-                          "(ou use --channel chrome / --channel msedge)")
+                          "(ou --channel chrome / --channel msedge; em último caso --no-sandbox)")
                 return EXIT_BROWSER
             try:
                 return _session(context, args)
