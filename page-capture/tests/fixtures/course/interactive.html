@@ -18,7 +18,7 @@
 <button class="component_base next" aria-label="next slide" id="next" disabled>SEGUINTE</button>
 <script>
   window.events = [];
-  setTimeout(() => { document.getElementById('late').style.visibility = 'visible'; }, 1500);
+  setTimeout(() => { document.getElementById('late').style.visibility = 'visible'; }, 3000);
   // simula o utilizador a clicar na peça b) passados 3 s: revela conteúdo e ativa o SEGUINTE
   document.getElementById('piece').addEventListener('click', () => {
     document.getElementById('next').disabled = false; window.events.push('enabled');

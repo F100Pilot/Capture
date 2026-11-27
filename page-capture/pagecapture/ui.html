@@ -125,7 +125,6 @@
         </div>
         <label for="ready_alert">Alerta se o SEGUINTE continuar desativado (s)</label>
         <input id="ready_alert" name="ready_alert" type="number" min="1" value="60">
-        <label class="check"><input type="checkbox" name="full_page"> Página inteira (só para páginas com scroll; não usar em Storyline)</label>
         <label class="check"><input type="checkbox" name="verbose"> Registo detalhado (diagnóstico)</label>
         <label class="check"><input type="checkbox" name="no_sandbox"> Sem sandbox (só se o browser não abrir)</label>
       </details>
@@ -303,7 +302,8 @@
       const t = document.createElement('span'); t.className = 'tag'; t.textContent = row.trigger;
       meta.appendChild(t);
       const c = document.createElement('div'); c.className = 'ctl';
-      c.textContent = row.control ? 'via ' + row.control : (row.trigger === 'manual' ? 'avanço manual' : 'página inicial');
+      c.textContent = row.control ? 'via ' + row.control
+        : ({ manual: 'avanço manual', ready: 'slide completo', start: 'página inicial' }[row.trigger] || '—');
       c.title = row.control || ''; meta.appendChild(c);
       card.appendChild(meta); grid.appendChild(card);
     }

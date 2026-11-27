@@ -77,7 +77,7 @@ def parse_params(data: dict) -> SessionParams:
             change_threshold=fraction_arg(field("change_threshold", "0.003")),
             change_timeout=positive_float(field("change_timeout", "15")),
             manual_timeout=positive_float(field("manual_timeout", "300")),
-            full_page=bool(data.get("full_page")),
+            full_page=False,  # redimensiona a página a cada gravação; só na CLI (--full-page)
             ready_alert=positive_float(field("ready_alert", "60")),
         )
         return SessionParams(

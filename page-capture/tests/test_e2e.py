@@ -135,10 +135,12 @@ def test_waits_for_disabled_next_and_captures_final_state(course_server, tmp_pat
 
     with open(run_dir / "index.csv", encoding="utf-8") as fh:
         rows = list(csv.DictReader(fh))
-    assert [r["trigger"] for r in rows] == ["start", "click"]  # sem modo assistido
+    # gravada ao aparecer (start) e de novo completa quando o SEGUINTE ativou (ready)
+    assert [r["trigger"] for r in rows] == ["start", "ready", "click"]
     assert events == ["enabled", "next"]  # nunca clicou com o SEGUINTE desativado
-    # a 1.ª página foi gravada só depois da timeline: o bloco vermelho tardio está lá
-    assert Image.open(run_dir / "0001.png").convert("RGB").getpixel((250, 400)) == (220, 20, 20)
+    red = (220, 20, 20)
+    assert Image.open(run_dir / "0001.png").convert("RGB").getpixel((250, 400)) != red
+    assert Image.open(run_dir / "0002.png").convert("RGB").getpixel((250, 400)) == red
     assert "parece pedir uma interação" not in caplog.text  # só narração: sem alerta
 
 
@@ -163,7 +165,7 @@ def test_interactive_slide_alerts_user_and_continues(course_server, tmp_path, ca
 
     with open(run_dir / "index.csv", encoding="utf-8") as fh:
         rows = list(csv.DictReader(fh))
-    assert [r["trigger"] for r in rows] == ["start", "click"]
+    assert [r["trigger"] for r in rows] == ["start", "ready", "click"]
     assert events == ["enabled", "next"]
     # zona clicável detetada logo (antes dos 60 s de ready_alert) e descrita no alerta
     assert "parece pedir uma interação" in caplog.text and 'div "b)" #piece' in caplog.text

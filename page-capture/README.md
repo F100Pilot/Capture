@@ -55,7 +55,8 @@ python capture.py https://lms.exemplo.pt/curso --max-pages 10 -v
 5. Ctrl+C termina em segurança; o que já foi gravado fica.
 
 Resultado: `capturas/AAAA-MM-DD_HHMMSS/` com `0001.png`, `0002.png`, … e `index.csv`
-(`n, file, timestamp_utc, url, trigger, control, changed_fraction`).
+(`n, file, timestamp_utc, url, trigger, control, changed_fraction`);
+`trigger` = `start` | `click` | `manual` | `ready` (slide completo após o SEGUINTE ativar).
 Páginas repetidas (quase iguais a uma já gravada) nunca são gravadas; 5 repetidas seguidas
 (conteúdo em ciclo) terminam a captura.
 
@@ -73,7 +74,7 @@ Páginas repetidas (quase iguais a uma já gravada) nunca são gravadas; 5 repet
 | `--change-timeout` | `15` | segundos à espera de mudança após clique |
 | `--manual-timeout` | `300` | segundos à espera em modo assistido |
 | `--ready-alert` | `60` | segundos com o SEGUINTE desativado (sem zonas clicáveis) até alertar |
-| `--full-page` | — | grava a página inteira (só 1 captura por página gravada; não usar em Storyline, que se reajusta a cada redimensionamento) |
+| `--full-page` | — | só na linha de comandos: grava a página inteira (só 1 captura por página gravada; não usar em Storyline, que se reajusta a cada redimensionamento) |
 | `--headless` | — | sem janela (não permite login manual) |
 | `--no-sandbox` | — | desliga a sandbox do browser (ligada por omissão; usar só se o browser não abrir) |
 | `--no-prompt` | — | não esperar ENTER |
@@ -90,8 +91,9 @@ que `--manual-timeout`, passa a modo assistido.
 
 ### SEGUINTE desativado (conteúdo a decorrer ou interação pedida)
 
-Se o controlo de avançar existir mas estiver desativado, a ferramenta espera que fique ativo (até
-10 min), grava o slide já completo e só então avança. Enquanto espera:
+Cada página é gravada logo que aparece. Se o controlo de avançar estiver desativado, a ferramenta
+espera que fique ativo (até 10 min); se entretanto o slide mudou (conteúdo que foi aparecendo),
+grava também o estado final (`trigger = ready`) e só então avança. Enquanto espera:
 
 - se o slide tiver zonas clicáveis (cursor «mão», fora dos botões de navegação), alerta logo:
   faça a interação pedida no browser, **sem** carregar em SEGUINTE;

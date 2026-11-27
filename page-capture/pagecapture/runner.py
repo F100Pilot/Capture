@@ -434,12 +434,23 @@ class Runner:
             self.assist = None
         return checks > 0
 
-    def _capture_ready(self, png: bytes, thumb: Image.Image) -> tuple[bytes, Image.Image]:
-        """Se o slide ainda não terminou, espera e captura o estado final (conteúdo completo)."""
+    def _capture_ready(self, ref: Image.Image) -> Image.Image:
+        """Slide ainda a decorrer: espera pelo SEGUINTE e grava o estado final se mudou.
+
+        A página já foi gravada ao aparecer; isto só acrescenta o slide completo («ready»).
+        Devolve a nova referência (o que está no ecrã).
+        """
         if not self.wait_until_ready():
-            return png, thumb
+            return ref
         shot = self._screenshot()
-        return self._settle(*shot) if shot else (png, thumb)
+        if shot is None:
+            return ref
+        png, thumb = self._settle(*shot)
+        frac = changed_fraction(ref, thumb)
+        if frac >= self.opts.change_threshold and self.recorder.count < self.opts.max_pages:
+            self.recorder.save(self._final_png(png), thumb, self.current_page().url, "ready",
+                               "", frac)
+        return thumb
 
     def _log_diagnostics(self, frames: list[Frame | None], features: list[list[dict]]) -> None:
         """Com -v: o que a heurística viu quando não encontrou nenhum candidato."""
@@ -518,8 +529,9 @@ class Runner:
         shot = self._screenshot()
         if shot is None:
             raise RuntimeError("Não foi possível capturar a página inicial.")
-        png, ref = self._capture_ready(*self._settle(*shot))
+        png, ref = self._settle(*shot)
         self.recorder.save(self._final_png(png), ref, self.current_page().url, "start", "", None)
+        ref = self._capture_ready(ref)
 
         missed = 0
         duplicates = 0
@@ -566,12 +578,11 @@ class Runner:
                 continue
             missed = 0
             blocked_since = None
-            png, thumb, _ = result
-            prev_ref = ref
-            png, ref = self._capture_ready(png, thumb)
-            frac = changed_fraction(prev_ref, ref)
-            if self.recorder.save(self._final_png(png), ref, self.current_page().url, trigger,
-                                  control, frac):
+            png, ref, frac = result
+            saved = self.recorder.save(self._final_png(png), ref, self.current_page().url,
+                                       trigger, control, frac)
+            ref = self._capture_ready(ref)  # grava logo ao aparecer; depois o slide completo
+            if saved:
                 duplicates = 0
                 continue
             duplicates += 1
