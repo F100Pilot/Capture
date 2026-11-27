@@ -17,7 +17,8 @@ Requisitos: Python ≥ 3.10. Dependências fixadas: playwright 1.65.2, pillow 13
 
 ## Interface no browser (recomendado)
 
-Duplo clique em `ui.bat`, ou:
+Duplo clique em `ui.bat` (faz primeiro `git pull --ff-only`; se as dependências mudarem, corre o
+`pip install`; se o pull falhar, abre a versão atual com um aviso), ou:
 
 ```powershell
 .\.venv\Scripts\python.exe capture_ui.py
