@@ -14,7 +14,7 @@ from PIL import Image
 from playwright.sync_api import BrowserContext, Frame, Page, Playwright
 from playwright.sync_api import Error as PlaywrightError
 
-from .imagediff import changed_fraction, thumbnail
+from .imagediff import changed_fraction, mask_bands, thumbnail
 from .scoring import MIN_SCORE, describe, is_blocked_next, rank, score
 
 log = logging.getLogger("pagecapture")
@@ -259,6 +259,8 @@ class Runner:
         self.opts = opts
         self._stop = stop_event
         self.assist: str | None = None  # ASSIST_* enquanto se espera pelo utilizador
+        self.last_settle_stable = False
+        self._nav_bands: list[tuple[float, float]] = []  # faixas da barra de navegação (0..1)
 
     def _check_stop(self) -> None:
         if self._stop is not None and self._stop.is_set():
@@ -372,10 +374,38 @@ class Runner:
                     log.debug("Seletor %r falhou no frame %s: %s",
                               self.opts.next_selector, frame.url, e)
             return False
-        _, features = self._collect(page)
+        frames, features = self._collect(page)
+        self._update_nav_bands(page, frames, features)
         if rank(features):
             return False
         return any(is_blocked_next(f) for feats in features for f in feats)
+
+    def _update_nav_bands(self, page: Page, frames: list[Frame | None],
+                          features: list[list[dict]]) -> None:
+        """Faixa horizontal de cada controlo de avançar (ativo ou não), em frações da janela."""
+        bands: list[tuple[float, float]] = []
+        try:
+            height = page.evaluate("() => window.innerHeight") or 0
+        except PlaywrightError:
+            return
+        for fi, feats in enumerate(features):
+            frame = frames[fi]
+            for idx, f in enumerate(feats):
+                if frame is None or not (is_blocked_next(f) or (score(f) or 0) >= MIN_SCORE):
+                    continue
+                try:
+                    box = frame.locator(f'[data-pc-cand="{idx}"]').bounding_box(timeout=1000)
+                except PlaywrightError:
+                    continue
+                if box and height:
+                    pad = box["height"] * 0.5
+                    bands.append(((box["y"] - pad) / height,
+                                  (box["y"] + box["height"] + pad) / height))
+        self._nav_bands = bands
+
+    def _content_diff(self, a: Image.Image, b: Image.Image) -> float:
+        """Diferença ignorando a barra de navegação (ex. o SEGUINTE a ficar ativo)."""
+        return changed_fraction(mask_bands(a, self._nav_bands), mask_bands(b, self._nav_bands))
 
     def find_hotspots(self) -> list[str]:
         """Zonas clicáveis do slide (cursor «mão») que não são controlos de navegação."""
@@ -399,10 +429,13 @@ class Runner:
                     log.debug("Zona clicável ignorada (barra de navegação): %s", describe(f))
                     continue
                 found.append(describe(f))
+        log.debug("Zonas clicáveis no slide: %s", "; ".join(found) if found else "nenhuma")
         return found
 
-    def wait_until_ready(self, timeout: float = READY_TIMEOUT) -> bool:
-        """Espera que um SEGUINTE desativado fique ativo. True se houve espera.
+    def wait_until_ready(self, ref: Image.Image, timeout: float = READY_TIMEOUT
+                         ) -> Image.Image:
+        """Espera que um SEGUINTE desativado fique ativo, gravando a informação nova que for
+        aparecendo no slide. Devolve a referência atualizada.
 
         Alerta o utilizador logo que o slide tenha zonas clicáveis (provável interação pedida),
         ou ao fim de opts.ready_alert segundos (ex. narração longa).
@@ -429,28 +462,12 @@ class Runner:
                     log.info("Ainda à espera que o SEGUINTE fique ativo (%.0f s).",
                              time.monotonic() - start)
                 checks += 1
-                self._pause(READY_POLL)
+                ref = self._watch(ref, READY_POLL)
         finally:
             self.assist = None
-        return checks > 0
-
-    def _capture_ready(self, ref: Image.Image) -> Image.Image:
-        """Slide ainda a decorrer: espera pelo SEGUINTE e grava o estado final se mudou.
-
-        A página já foi gravada ao aparecer; isto só acrescenta o slide completo («ready»).
-        Devolve a nova referência (o que está no ecrã).
-        """
-        if not self.wait_until_ready():
-            return ref
-        shot = self._screenshot()
-        if shot is None:
-            return ref
-        png, thumb = self._settle(*shot)
-        frac = changed_fraction(ref, thumb)
-        if frac >= self.opts.change_threshold and self.recorder.count < self.opts.max_pages:
-            self.recorder.save(self._final_png(png), thumb, self.current_page().url, "ready",
-                               "", frac)
-        return thumb
+        if checks:  # o SEGUINTE acabou de ativar: o slide pode ter mudado no último instante
+            ref = self.capture_update(ref)
+        return ref
 
     def _log_diagnostics(self, frames: list[Frame | None], features: list[list[dict]]) -> None:
         """Com -v: o que a heurística viu quando não encontrou nenhum candidato."""
@@ -493,7 +510,9 @@ class Runner:
 
     # --- deteção de mudança ------------------------------------------------------------------
     def _settle(self, png: bytes, thumb: Image.Image) -> tuple[bytes, Image.Image]:
+        """Espera que o ecrã estabilize. self.last_settle_stable diz se estabilizou."""
         deadline = time.monotonic() + SETTLE_MAX
+        self.last_settle_stable = False
         while time.monotonic() < deadline:
             time.sleep(POLL_INTERVAL)
             shot = self._screenshot()
@@ -502,8 +521,37 @@ class Runner:
             stable = changed_fraction(thumb, shot[1]) < SETTLE_DIFF
             png, thumb = shot
             if stable:
+                self.last_settle_stable = True
                 break
         return png, thumb
+
+    def capture_update(self, ref: Image.Image) -> Image.Image:
+        """Grava informação nova que apareceu no slide (trigger «update»). Devolve a referência.
+
+        Só grava depois de o ecrã estabilizar: animações contínuas não enchem a pasta.
+        """
+        shot = self._screenshot()
+        if shot is None or self._content_diff(ref, shot[1]) < self.opts.change_threshold:
+            return ref
+        png, thumb = self._settle(*shot)
+        if not self.last_settle_stable:
+            log.debug("Ecrã ainda em animação; a mudança será gravada quando estabilizar.")
+            return ref
+        frac = self._content_diff(ref, thumb)
+        if frac < self.opts.change_threshold:
+            return ref
+        if self.recorder.count < self.opts.max_pages:
+            self.recorder.save(self._final_png(png), thumb, self.current_page().url, "update",
+                               "", frac)
+        return thumb
+
+    def _watch(self, ref: Image.Image, seconds: float) -> Image.Image:
+        """Pausa que continua a gravar a informação nova que for aparecendo."""
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline:
+            self._pause(min(READY_POLL, max(0.0, deadline - time.monotonic())))
+            ref = self.capture_update(ref)
+        return ref
 
     def wait_for_change(self, ref: Image.Image, timeout: float
                         ) -> tuple[bytes, Image.Image, float] | None:
@@ -531,7 +579,7 @@ class Runner:
             raise RuntimeError("Não foi possível capturar a página inicial.")
         png, ref = self._settle(*shot)
         self.recorder.save(self._final_png(png), ref, self.current_page().url, "start", "", None)
-        ref = self._capture_ready(ref)
+        ref = self.wait_until_ready(ref)
 
         missed = 0
         duplicates = 0
@@ -574,14 +622,23 @@ class Runner:
                 else:
                     log.info("Navegação limitada («%s»): aviso fechado; nova tentativa em %.0f s.",
                              blocker[:60], RESTRICTED_RETRY)
-                self._pause(RESTRICTED_RETRY)
+                hotspots = self.find_hotspots()  # o slide pede uma interação?
+                if hotspots:
+                    log.warning("O slide parece pedir uma interação (zonas clicáveis: %s). "
+                                "Faça-a no browser; não carregue em SEGUINTE.",
+                                "; ".join(hotspots[:3]))
+                    self.assist = ASSIST_INTERACT
+                try:
+                    ref = self._watch(ref, RESTRICTED_RETRY)
+                finally:
+                    self.assist = None
                 continue
             missed = 0
             blocked_since = None
             png, ref, frac = result
             saved = self.recorder.save(self._final_png(png), ref, self.current_page().url,
                                        trigger, control, frac)
-            ref = self._capture_ready(ref)  # grava logo ao aparecer; depois o slide completo
+            ref = self.wait_until_ready(ref)  # grava ao aparecer e cada informação nova
             if saved:
                 duplicates = 0
                 continue

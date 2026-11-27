@@ -5,25 +5,30 @@
   body { margin: 0; font-family: sans-serif; background: #2f4a52; color: #fff; }
   .slide { display: none; padding: 40px; } .slide.active { display: block; }
   #late { visibility: hidden; position: fixed; left: 100px; top: 300px; width: 300px; height: 200px;
-          background: rgb(220, 20, 20); }
+          background: rgb(250, 230, 90); }
+  #late2 { visibility: hidden; position: fixed; left: 700px; top: 300px; width: 300px; height: 200px;
+           background: rgb(20, 160, 60); }
   #next { position: fixed; right: 30px; bottom: 30px; font-size: 18px; padding: 8px 18px; }
 </style></head>
 <body>
 <section class="slide active" id="s1"><h1>Slide com narração</h1></section>
 <section class="slide" id="s2"><h1>Fim</h1></section>
 <div id="late"></div>
+<div id="late2"></div>
 <!-- como no Storyline: SEGUINTE desativado até a timeline do slide terminar -->
 <button class="component_base std outline" style="position:fixed;left:30px;bottom:30px;cursor:pointer;width:50px;height:40px">☰</button>
 <button class="component_base next" aria-label="next slide" id="next" disabled>SEGUINTE</button>
 <script>
   window.events = [];
-  setTimeout(() => { document.getElementById('late').style.visibility = 'visible'; }, 3000);
-  setTimeout(() => { document.getElementById('next').disabled = false; window.events.push('enabled'); }, 4500);
+  setTimeout(() => { document.getElementById('late').style.visibility = 'visible'; }, 2000);
+  setTimeout(() => { document.getElementById('late2').style.visibility = 'visible'; }, 5000);
+  setTimeout(() => { document.getElementById('next').disabled = false; window.events.push('enabled'); }, 8000);
   document.getElementById('next').addEventListener('click', () => {
     window.events.push('next');
     document.getElementById('s1').classList.remove('active');
     document.getElementById('s2').classList.add('active');
     document.getElementById('late').style.display = 'none';
+    document.getElementById('late2').style.display = 'none';
     document.getElementById('next').hidden = true;
   });
 </script>

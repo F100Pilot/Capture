@@ -18,7 +18,7 @@ visual de cada página: abre o conteúdo no browser, captura cada página nova e
    `--next-selector` substitui a heurística.
 4. Modo assistido: sem controlo válido ou após 2 cliques sem mudança, o utilizador avança à mão;
    captura quando mudar e retoma o automático. Sem mudança durante `--manual-timeout` → termina.
-5. `index.csv` com flush por linha: n, file, timestamp_utc, url, trigger (start|click|manual|ready),
+5. `index.csv` com flush por linha: n, file, timestamp_utc, url, trigger (start|click|manual|update),
    control, changed_fraction.
 6. Ctrl+C termina limpo e mantém o gravado. Segue sempre a janela mais recente (popups do LMS).
 

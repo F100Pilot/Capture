@@ -2,7 +2,7 @@ from io import BytesIO
 
 from PIL import Image, ImageDraw
 
-from pagecapture.imagediff import changed_fraction, thumbnail
+from pagecapture.imagediff import changed_fraction, mask_bands, thumbnail
 
 
 def png(text: str, size=(1366, 768)) -> bytes:
@@ -29,3 +29,12 @@ def test_text_change_same_template_detected():
 def test_different_sizes_is_one():
     a, b = thumbnail(png("x")), thumbnail(png("x", size=(1366, 2000)))
     assert changed_fraction(a, b) == 1.0
+
+
+def test_mask_bands_ignores_navigation_bar():
+    a = Image.new("L", (400, 225), 255)
+    b = a.copy()
+    ImageDraw.Draw(b).rectangle([300, 200, 390, 220], fill=0)  # «SEGUINTE» ficou ativo
+    assert changed_fraction(a, b) > 0.003
+    band = [(195 / 225, 1.0)]
+    assert changed_fraction(mask_bands(a, band), mask_bands(b, band)) == 0.0

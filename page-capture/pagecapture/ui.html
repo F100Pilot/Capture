@@ -303,7 +303,7 @@
       meta.appendChild(t);
       const c = document.createElement('div'); c.className = 'ctl';
       c.textContent = row.control ? 'via ' + row.control
-        : ({ manual: 'avanço manual', ready: 'slide completo', start: 'página inicial' }[row.trigger] || '—');
+        : ({ manual: 'avanço manual', update: 'informação nova no slide', start: 'página inicial' }[row.trigger] || '—');
       c.title = row.control || ''; meta.appendChild(c);
       card.appendChild(meta); grid.appendChild(card);
     }

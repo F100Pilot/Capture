@@ -17,7 +17,8 @@
 </style>
 </head>
 <body>
-<section class="slide active" id="s1"><h1>Objetivos do Curso</h1><p>No final deste curso, estará apto a conhecer as regras.</p></section>
+<section class="slide active" id="s1"><h1>Objetivos do Curso</h1><p>No final deste curso, estará apto a conhecer as regras.</p>
+<div id="hotspot" style="cursor:pointer;width:160px;height:80px;background:#9ab;color:#123">Saber mais</div></section>
 <section class="slide" id="s2"><h1>Fim</h1><p>Concluiu.</p></section>
 <button id="next">SEGUINTE ›</button>
 <div id="modal" hidden>
@@ -41,6 +42,7 @@
     document.getElementById('s1').classList.remove('active');
     document.getElementById('s2').classList.add('active');
     document.getElementById('next').hidden = true;
+    document.getElementById('hotspot').hidden = true;
   });
   document.querySelector('#modal .ok').addEventListener('click', () => {
     window.events.push('ok');

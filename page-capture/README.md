@@ -56,7 +56,7 @@ python capture.py https://lms.exemplo.pt/curso --max-pages 10 -v
 
 Resultado: `capturas/AAAA-MM-DD_HHMMSS/` com `0001.png`, `0002.png`, … e `index.csv`
 (`n, file, timestamp_utc, url, trigger, control, changed_fraction`);
-`trigger` = `start` | `click` | `manual` | `ready` (slide completo após o SEGUINTE ativar).
+`trigger` = `start` | `click` | `manual` | `update` (informação nova que apareceu no mesmo slide).
 Páginas repetidas (quase iguais a uma já gravada) nunca são gravadas; 5 repetidas seguidas
 (conteúdo em ciclo) terminam a captura.
 
@@ -86,14 +86,16 @@ Códigos de saída: `0` ok (inclui Ctrl+C), `1` erro de execução, `2` o browse
 ### Navegação limitada (ex. Storyline)
 
 Se o conteúdo mostrar um aviso como «A navegação é limitada» (o slide ainda não terminou), a
-ferramenta fecha o aviso (OK), não o grava, espera 5 s e volta a tentar. Se o bloqueio durar mais do
+ferramenta fecha o aviso (OK), não o grava, e volta a tentar a cada 5 s. Entretanto grava cada
+informação nova que aparecer no slide (`update`) e inspeciona o slide: se houver zonas clicáveis
+(fora da barra de navegação), alerta e indica-as no registo. Se o bloqueio durar mais do
 que `--manual-timeout`, passa a modo assistido.
 
 ### SEGUINTE desativado (conteúdo a decorrer ou interação pedida)
 
 Cada página é gravada logo que aparece. Se o controlo de avançar estiver desativado, a ferramenta
-espera que fique ativo (até 10 min); se entretanto o slide mudou (conteúdo que foi aparecendo),
-grava também o estado final (`trigger = ready`) e só então avança. Enquanto espera:
+espera que fique ativo (até 10 min) e grava cada informação nova que for aparecendo no slide
+(`trigger = update`, só depois de o ecrã estabilizar); depois avança. Enquanto espera:
 
 - se o slide tiver zonas clicáveis (cursor «mão», fora dos botões de navegação), alerta logo:
   faça a interação pedida no browser, **sem** carregar em SEGUINTE;
