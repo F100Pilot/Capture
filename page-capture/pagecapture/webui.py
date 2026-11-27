@@ -78,6 +78,7 @@ def parse_params(data: dict) -> SessionParams:
             change_timeout=positive_float(field("change_timeout", "15")),
             manual_timeout=positive_float(field("manual_timeout", "300")),
             full_page=bool(data.get("full_page")),
+            ready_alert=positive_float(field("ready_alert", "60")),
         )
         return SessionParams(
             url=url_arg(field("url")),
@@ -155,7 +156,7 @@ class Controller:
                 "message": self._message,
                 "run": self._run_dir.name if self._run_dir else None,
                 "count": rec.count if rec else 0,
-                "assist": bool(runner and runner.waiting_for_user and self._state == "capturing"),
+                "assist": runner.assist if runner and self._state == "capturing" else None,
                 "logs": lines,
                 "last_seq": last,
                 "runs": self.list_runs(),
@@ -296,7 +297,7 @@ class Handler(BaseHTTPRequestHandler):
     sys_version = ""
 
     def log_message(self, fmt: str, *args) -> None:
-        log.debug("HTTP %s", fmt % args)
+        pass  # pedidos da própria interface (polling) não entram no registo
 
     # --- respostas ---------------------------------------------------------------------------
     def _headers(self, status: int, ctype: str, length: int) -> None:

@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="pt">
+<head><meta charset="utf-8"><title>Interação</title>
+<style>
+  body { margin: 0; font-family: sans-serif; background: #2f4a52; color: #fff; }
+  .slide { display: none; padding: 40px; } .slide.active { display: block; }
+  #late { visibility: hidden; position: fixed; left: 100px; top: 300px; width: 300px; height: 200px;
+          background: rgb(220, 20, 20); }
+  #next { position: fixed; right: 30px; bottom: 30px; font-size: 18px; padding: 8px 18px; }
+</style></head>
+<body>
+<section class="slide active" id="s1"><h1>Clique na peça b)</h1>
+<div class="piece" id="piece" style="cursor:pointer;position:fixed;left:600px;top:150px;width:120px;height:120px;background:#ccd;color:#222;font-size:40px">b)</div></section>
+<section class="slide" id="s2"><h1>Fim</h1></section>
+<div id="late"></div>
+<!-- como no Storyline: SEGUINTE desativado até a timeline do slide terminar -->
+<button class="component_base next" aria-label="next slide" id="next" disabled>SEGUINTE</button>
+<script>
+  window.events = [];
+  setTimeout(() => { document.getElementById('late').style.visibility = 'visible'; }, 1500);
+  // simula o utilizador a clicar na peça b) passados 3 s: revela conteúdo e ativa o SEGUINTE
+  document.getElementById('piece').addEventListener('click', () => {
+    document.getElementById('next').disabled = false; window.events.push('enabled');
+  });
+  setTimeout(() => document.getElementById('piece').click(), 3000);
+  document.getElementById('next').addEventListener('click', () => {
+    window.events.push('next');
+    document.getElementById('s1').classList.remove('active');
+    document.getElementById('s2').classList.add('active');
+    document.getElementById('late').style.display = 'none';
+    document.getElementById('piece').style.display = 'none';
+    document.getElementById('next').hidden = true;
+  });
+</script>
+</body>
+</html>

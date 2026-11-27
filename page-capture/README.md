@@ -72,6 +72,7 @@ Páginas repetidas (quase iguais a uma já gravada) nunca são gravadas; 5 repet
 | `--change-threshold` | `0.003` | fração mínima de píxeis alterados |
 | `--change-timeout` | `15` | segundos à espera de mudança após clique |
 | `--manual-timeout` | `300` | segundos à espera em modo assistido |
+| `--ready-alert` | `60` | segundos com o SEGUINTE desativado (sem zonas clicáveis) até alertar |
 | `--full-page` | — | grava a página inteira (só 1 captura por página gravada; não usar em Storyline, que se reajusta a cada redimensionamento) |
 | `--headless` | — | sem janela (não permite login manual) |
 | `--no-sandbox` | — | desliga a sandbox do browser (ligada por omissão; usar só se o browser não abrir) |
@@ -86,6 +87,17 @@ Códigos de saída: `0` ok (inclui Ctrl+C), `1` erro de execução, `2` o browse
 Se o conteúdo mostrar um aviso como «A navegação é limitada» (o slide ainda não terminou), a
 ferramenta fecha o aviso (OK), não o grava, espera 5 s e volta a tentar. Se o bloqueio durar mais do
 que `--manual-timeout`, passa a modo assistido.
+
+### SEGUINTE desativado (conteúdo a decorrer ou interação pedida)
+
+Se o controlo de avançar existir mas estiver desativado, a ferramenta espera que fique ativo (até
+10 min), grava o slide já completo e só então avança. Enquanto espera:
+
+- se o slide tiver zonas clicáveis (cursor «mão», fora dos botões de navegação), alerta logo:
+  faça a interação pedida no browser, **sem** carregar em SEGUINTE;
+- se não tiver (ex. narração), espera em silêncio e só alerta ao fim de `--ready-alert` s (60).
+
+A ferramenta nunca clica nessas zonas sozinha.
 
 ### Afinação
 

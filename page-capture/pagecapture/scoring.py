@@ -113,7 +113,18 @@ def describe(feat: dict) -> str:
     return out[:120]
 
 
-def rank(frames_features: list[list[dict]], min_score: float = 6) -> list[Candidate]:
+MIN_SCORE = 6
+
+
+def is_blocked_next(feat: dict, min_score: float = MIN_SCORE) -> bool:
+    """Controlo de avançar que existe mas está desativado (ex. slide Storyline a decorrer)."""
+    if not feat.get("disabled"):
+        return False
+    s = score({**feat, "disabled": False})
+    return s is not None and s >= min_score
+
+
+def rank(frames_features: list[list[dict]], min_score: float = MIN_SCORE) -> list[Candidate]:
     """Candidatos com score >= min_score em todos os frames; melhor primeiro, DOM no empate."""
     found: list[Candidate] = []
     for fi, feats in enumerate(frames_features):

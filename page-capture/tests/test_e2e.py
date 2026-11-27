@@ -112,3 +112,58 @@ def test_full_page_does_not_resize_while_polling(course_server, tmp_path):
     assert all(Image.open(p).height > 768 for p in pngs)  # gravadas em página inteira
     # só as 2 capturas gravadas redimensionam; o polling (dezenas de screenshots) não
     assert resizes <= 3 * len(pngs), resizes
+
+
+@pytest.mark.e2e
+def test_waits_for_disabled_next_and_captures_final_state(course_server, tmp_path, caplog):
+    exe = os.environ.get("PC_BROWSER_EXECUTABLE") or None
+    with sync_playwright() as pw:
+        context = pw.chromium.launch_persistent_context(
+            str(tmp_path / "profile"), headless=True, executable_path=exe,
+            viewport={"width": 1366, "height": 768},
+        )
+        try:
+            page = context.pages[0] if context.pages else context.new_page()
+            page.goto(course_server.replace("index.html", "timeline.html"))
+            opts = RunOptions(max_pages=5, change_timeout=5, manual_timeout=2)
+            with Recorder(tmp_path / "out") as rec:
+                Runner(context, rec, opts).run()
+                run_dir = rec.dir
+            events = page.evaluate("() => window.events")
+        finally:
+            context.close()
+
+    with open(run_dir / "index.csv", encoding="utf-8") as fh:
+        rows = list(csv.DictReader(fh))
+    assert [r["trigger"] for r in rows] == ["start", "click"]  # sem modo assistido
+    assert events == ["enabled", "next"]  # nunca clicou com o SEGUINTE desativado
+    # a 1.ª página foi gravada só depois da timeline: o bloco vermelho tardio está lá
+    assert Image.open(run_dir / "0001.png").convert("RGB").getpixel((250, 400)) == (220, 20, 20)
+    assert "parece pedir uma interação" not in caplog.text  # só narração: sem alerta
+
+
+@pytest.mark.e2e
+def test_interactive_slide_alerts_user_and_continues(course_server, tmp_path, caplog):
+    exe = os.environ.get("PC_BROWSER_EXECUTABLE") or None
+    with sync_playwright() as pw:
+        context = pw.chromium.launch_persistent_context(
+            str(tmp_path / "profile"), headless=True, executable_path=exe,
+            viewport={"width": 1366, "height": 768},
+        )
+        try:
+            page = context.pages[0] if context.pages else context.new_page()
+            page.goto(course_server.replace("index.html", "interactive.html"))
+            opts = RunOptions(max_pages=5, change_timeout=5, manual_timeout=2)
+            with Recorder(tmp_path / "out") as rec:
+                Runner(context, rec, opts).run()
+                run_dir = rec.dir
+            events = page.evaluate("() => window.events")
+        finally:
+            context.close()
+
+    with open(run_dir / "index.csv", encoding="utf-8") as fh:
+        rows = list(csv.DictReader(fh))
+    assert [r["trigger"] for r in rows] == ["start", "click"]
+    assert events == ["enabled", "next"]
+    # zona clicável detetada logo (antes dos 60 s de ready_alert) e descrita no alerta
+    assert "parece pedir uma interação" in caplog.text and 'div "b)" #piece' in caplog.text

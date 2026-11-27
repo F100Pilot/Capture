@@ -80,10 +80,7 @@
   <h1>page-capture</h1>
   <span id="badge" class="badge">—</span>
 </header>
-<div id="assist" class="assist" role="alert">
-  Ação necessária: avance manualmente no browser (por exemplo, clique no elemento pedido no slide).
-  A captura retoma sozinha quando a página mudar.
-</div>
+<div id="assist" class="assist" role="alert"></div>
 <main>
   <section>
     <h2>Nova captura</h2>
@@ -126,6 +123,8 @@
             <input id="manual_timeout" name="manual_timeout" type="number" min="1" value="300">
           </div>
         </div>
+        <label for="ready_alert">Alerta se o SEGUINTE continuar desativado (s)</label>
+        <input id="ready_alert" name="ready_alert" type="number" min="1" value="60">
         <label class="check"><input type="checkbox" name="full_page"> Página inteira (só para páginas com scroll; não usar em Storyline)</label>
         <label class="check"><input type="checkbox" name="verbose"> Registo detalhado (diagnóstico)</label>
         <label class="check"><input type="checkbox" name="no_sandbox"> Sem sandbox (só se o browser não abrir)</label>
@@ -245,6 +244,10 @@
     $('btn-begin').disabled = s.state !== 'login';
     $('btn-stop').disabled = !BUSY.has(s.state) || s.state === 'stopping';
     const assist = !!s.assist;
+    $('assist').textContent = s.assist === 'interact'
+      ? 'Ação necessária: o SEGUINTE está desativado. Se o slide pedir uma interação (ex. «clique na peça»), '
+        + 'faça-a no browser. Não carregue em SEGUINTE: a captura avança sozinha quando ele ficar ativo.'
+      : 'Ação necessária: avance manualmente no browser. A captura retoma sozinha quando a página mudar.';
     $('assist').classList.toggle('on', assist);
     document.title = assist ? '⚠ Ação necessária — ' + TITLE : TITLE;
     if (assist && !assistOn) beep();

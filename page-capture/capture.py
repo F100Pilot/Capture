@@ -53,6 +53,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="segundos à espera de mudança após um clique")
     p.add_argument("--manual-timeout", type=positive_float, default=300.0,
                    help="segundos à espera de avanço manual antes de terminar")
+    p.add_argument("--ready-alert", type=positive_float, default=60.0,
+                   help="segundos com o SEGUINTE desativado (sem zonas clicáveis) até alertar")
     p.add_argument("--full-page", action="store_true", help="screenshot da página inteira")
     p.add_argument("--headless", action="store_true", help="sem janela (impede login manual)")
     p.add_argument("--no-sandbox", action="store_true",
@@ -79,6 +81,7 @@ def _session(context, args: argparse.Namespace) -> int:
         next_selector=args.next_selector, max_pages=args.max_pages,
         change_threshold=args.change_threshold, change_timeout=args.change_timeout,
         manual_timeout=args.manual_timeout, full_page=args.full_page,
+        ready_alert=args.ready_alert,
     )
     with Recorder(args.out) as recorder:
         log.info("A gravar em %s (Ctrl+C para parar)", recorder.dir)

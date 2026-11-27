@@ -1,7 +1,7 @@
 import re
 
 from pagecapture.runner import BLOCKER_PATTERN
-from pagecapture.scoring import rank, score, tokens
+from pagecapture.scoring import is_blocked_next, rank, score, tokens
 
 VW, VH = 1000, 600
 
@@ -74,6 +74,9 @@ def test_blocker_pattern():
 def test_storyline_next_button_from_lms():
     # <button class="component_base next" aria-label="next slide" disabled>SEGUINTE</button>
     lms = dict(text="SEGUINTE", aria="next slide", cls="component_base next")
-    assert score(feat(**lms, disabled=True)) is None  # bloqueado -> modo assistido imediato
+    assert score(feat(**lms, disabled=True)) is None  # nunca clicado enquanto desativado
+    assert is_blocked_next(feat(**lms, disabled=True))  # -> esperar que fique ativo
+    assert not is_blocked_next(feat(**lms))
+    assert not is_blocked_next(feat(text="ANTERIOR", disabled=True))
     assert score(feat(**lms)) >= 16
     assert score(feat(text="ANTERIOR", aria="previous slide", cls="component_base prev")) is None

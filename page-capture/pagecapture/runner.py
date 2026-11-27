@@ -15,7 +15,7 @@ from playwright.sync_api import BrowserContext, Frame, Page, Playwright
 from playwright.sync_api import Error as PlaywrightError
 
 from .imagediff import changed_fraction, thumbnail
-from .scoring import rank
+from .scoring import describe, is_blocked_next, rank, score
 
 log = logging.getLogger("pagecapture")
 
@@ -28,6 +28,11 @@ CLICK_TIMEOUT_MS = 5000
 SCREENSHOT_TIMEOUT_MS = 10000
 MAX_MISSED_CLICKS = 2
 MAX_CONSECUTIVE_DUPLICATES = 5
+READY_POLL = 1.0
+READY_TIMEOUT = 600.0  # espera máxima por um SEGUINTE desativado antes do modo assistido
+HOTSPOT_CHECK_EVERY = 5  # verificações de READY_POLL entre pesquisas de zonas clicáveis
+ASSIST_INTERACT = "interact"  # SEGUINTE desativado: interagir com o slide (sem carregar SEGUINTE)
+ASSIST_ADVANCE = "advance"  # sem SEGUINTE utilizável: avançar manualmente
 DIAGNOSTIC_TOP = 10
 BROWSER_HINT = ("Experimente: python -m playwright install chromium "
                 "(ou --channel chrome / --channel msedge; em último caso --no-sandbox)")
@@ -111,6 +116,37 @@ BLOCKER_JS = r"""
 }
 """
 
+# Zonas clicáveis do slide (cursor «mão»), para saber se o slide espera uma interação.
+HOTSPOT_JS = r"""
+() => {
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const out = [];
+  for (const el of document.querySelectorAll('body *')) {
+    if (out.length >= 50) break;
+    const st = getComputedStyle(el);
+    if (st.cursor !== 'pointer') continue;
+    const parent = el.parentElement;
+    if (parent && getComputedStyle(parent).cursor === 'pointer') continue;  // só o topo
+    const r = el.getBoundingClientRect();
+    if (r.width < 10 || r.height < 10) continue;
+    if (r.right <= 0 || r.bottom <= 0 || r.left >= vw || r.top >= vh) continue;
+    if (el.checkVisibility && !el.checkVisibility({checkOpacity: true, checkVisibilityCSS: true}))
+      continue;
+    const rawCls = el.getAttribute('class') || '';
+    const text = (el.innerText || el.textContent || '').trim();
+    out.push({
+      tag: el.tagName.toLowerCase(), role: el.getAttribute('role') || '',
+      text: text.slice(0, 200), aria: el.getAttribute('aria-label') || '',
+      title: el.getAttribute('title') || '', alt: el.getAttribute('alt') || '',
+      id: el.getAttribute('id') || '', cls: typeof rawCls === 'string' ? rawCls : '',
+      disabled: el.disabled === true || el.getAttribute('aria-disabled') === 'true',
+      x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height, vw, vh,
+    });
+  }
+  return out;
+}
+"""
+
 CSV_FIELDS = [
     "n", "file", "timestamp_utc", "url", "trigger", "control", "changed_fraction",
 ]
@@ -145,6 +181,7 @@ class RunOptions:
     change_timeout: float = 15.0
     manual_timeout: float = 300.0
     full_page: bool = False
+    ready_alert: float = 60.0  # alerta se o SEGUINTE continuar desativado (sem zonas clicáveis)
 
 
 def _new_run_dir(base: Path) -> Path:
@@ -220,7 +257,7 @@ class Runner:
         self.recorder = recorder
         self.opts = opts
         self._stop = stop_event
-        self.waiting_for_user = False  # True enquanto o modo assistido espera pelo utilizador
+        self.assist: str | None = None  # ASSIST_* enquanto se espera pelo utilizador
 
     def _check_stop(self) -> None:
         if self._stop is not None and self._stop.is_set():
@@ -291,17 +328,7 @@ class Runner:
         page = self.current_page()
         if self.opts.next_selector:
             return self._click_selector(page, self.opts.next_selector)
-        frames = self._visible_frames(page)
-        features: list[list[dict]] = []
-        for frame in frames:
-            if frame is None:
-                features.append([])
-                continue
-            try:
-                features.append(frame.evaluate(COLLECT_JS))
-            except PlaywrightError as e:
-                log.debug("Recolha falhou no frame %s: %s", frame.url, e)
-                features.append([])
+        frames, features = self._collect(page)
         candidates = rank(features)
         if not candidates and log.isEnabledFor(logging.DEBUG):
             self._log_diagnostics(frames, features)
@@ -316,6 +343,92 @@ class Runner:
             except PlaywrightError as e:
                 log.debug("Clique falhou em %s: %s", cand.description, e)
         return None
+
+    def _collect(self, page: Page) -> tuple[list[Frame | None], list[list[dict]]]:
+        frames = self._visible_frames(page)
+        features: list[list[dict]] = []
+        for frame in frames:
+            if frame is None:
+                features.append([])
+                continue
+            try:
+                features.append(frame.evaluate(COLLECT_JS))
+            except PlaywrightError as e:
+                log.debug("Recolha falhou no frame %s: %s", frame.url, e)
+                features.append([])
+        return frames, features
+
+    def next_is_blocked(self) -> bool:
+        """True se o controlo de avançar existe mas está desativado (e nenhum outro serve)."""
+        page = self.current_page()
+        if self.opts.next_selector:
+            for frame in page.frames:
+                try:
+                    loc = frame.locator(self.opts.next_selector)
+                    if loc.count():
+                        return loc.first.is_disabled()
+                except PlaywrightError as e:
+                    log.debug("Seletor %r falhou no frame %s: %s",
+                              self.opts.next_selector, frame.url, e)
+            return False
+        _, features = self._collect(page)
+        if rank(features):
+            return False
+        return any(is_blocked_next(f) for feats in features for f in feats)
+
+    def find_hotspots(self) -> list[str]:
+        """Zonas clicáveis do slide (cursor «mão») que não são controlos de navegação."""
+        found: list[str] = []
+        for frame in self._visible_frames(self.current_page()):
+            if frame is None:
+                continue
+            try:
+                feats = frame.evaluate(HOTSPOT_JS)
+            except PlaywrightError as e:
+                log.debug("Pesquisa de zonas clicáveis falhou no frame %s: %s", frame.url, e)
+                continue
+            for f in feats:
+                # exclui navegação: termos negativos/positivos (score None ou > 0) e SEGUINTE
+                if score(f) == 0 and not is_blocked_next(f):
+                    found.append(describe(f))
+        return found
+
+    def wait_until_ready(self, timeout: float = READY_TIMEOUT) -> bool:
+        """Espera que um SEGUINTE desativado fique ativo. True se houve espera.
+
+        Alerta o utilizador logo que o slide tenha zonas clicáveis (provável interação pedida),
+        ou ao fim de opts.ready_alert segundos (ex. narração longa).
+        """
+        start = time.monotonic()
+        checks = 0
+        try:
+            while time.monotonic() - start < timeout and self.next_is_blocked():
+                if checks == 0:
+                    log.info("SEGUINTE desativado (conteúdo a decorrer ou interação pedida): "
+                             "à espera que fique ativo.")
+                if self.assist is None and checks % HOTSPOT_CHECK_EVERY == 0:
+                    hotspots = self.find_hotspots()
+                    if hotspots:
+                        self.assist = ASSIST_INTERACT
+                        log.warning("O slide parece pedir uma interação (zonas clicáveis: %s). "
+                                    "Faça-a no browser; não carregue em SEGUINTE.",
+                                    "; ".join(hotspots[:3]))
+                if self.assist is None and time.monotonic() - start > self.opts.ready_alert:
+                    self.assist = ASSIST_INTERACT
+                    log.warning("SEGUINTE desativado há %.0f s: se o slide pedir uma interação, "
+                                "faça-a no browser.", self.opts.ready_alert)
+                checks += 1
+                self._pause(READY_POLL)
+        finally:
+            self.assist = None
+        return checks > 0
+
+    def _capture_ready(self, png: bytes, thumb: Image.Image) -> tuple[bytes, Image.Image]:
+        """Se o slide ainda não terminou, espera e captura o estado final (conteúdo completo)."""
+        if not self.wait_until_ready():
+            return png, thumb
+        shot = self._screenshot()
+        return self._settle(*shot) if shot else (png, thumb)
 
     def _log_diagnostics(self, frames: list[Frame | None], features: list[list[dict]]) -> None:
         """Com -v: o que a heurística viu quando não encontrou nenhum candidato."""
@@ -394,7 +507,7 @@ class Runner:
         shot = self._screenshot()
         if shot is None:
             raise RuntimeError("Não foi possível capturar a página inicial.")
-        png, ref = self._settle(*shot)
+        png, ref = self._capture_ready(*self._settle(*shot))
         self.recorder.save(self._final_png(png), ref, self.current_page().url, "start", "", None)
 
         missed = 0
@@ -417,11 +530,11 @@ class Runner:
                           else "controlo de avançar não encontrado")
                 log.warning("Modo assistido (%s): avance manualmente no browser "
                             "(espero até %.0f s).", reason, self.opts.manual_timeout)
-                self.waiting_for_user = True
+                self.assist = ASSIST_ADVANCE
                 try:
                     result = self.wait_for_change(ref, self.opts.manual_timeout)
                 finally:
-                    self.waiting_for_user = False
+                    self.assist = None
                 if result is None:
                     log.info("Sem mudança durante %.0f s; a terminar.", self.opts.manual_timeout)
                     return
@@ -442,7 +555,10 @@ class Runner:
                 continue
             missed = 0
             blocked_since = None
-            png, ref, frac = result
+            png, thumb, _ = result
+            prev_ref = ref
+            png, ref = self._capture_ready(png, thumb)
+            frac = changed_fraction(prev_ref, ref)
             if self.recorder.save(self._final_png(png), ref, self.current_page().url, trigger,
                                   control, frac):
                 duplicates = 0
