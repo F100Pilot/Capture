@@ -15,7 +15,7 @@ from playwright.sync_api import BrowserContext, Frame, Page, Playwright
 from playwright.sync_api import Error as PlaywrightError
 
 from .imagediff import changed_fraction, thumbnail
-from .scoring import describe, is_blocked_next, rank, score
+from .scoring import MIN_SCORE, describe, is_blocked_next, rank, score
 
 log = logging.getLogger("pagecapture")
 
@@ -31,6 +31,7 @@ MAX_CONSECUTIVE_DUPLICATES = 5
 READY_POLL = 1.0
 READY_TIMEOUT = 600.0  # espera máxima por um SEGUINTE desativado antes do modo assistido
 HOTSPOT_CHECK_EVERY = 5  # verificações de READY_POLL entre pesquisas de zonas clicáveis
+READY_PROGRESS_EVERY = 15  # registo periódico enquanto espera pelo SEGUINTE
 ASSIST_INTERACT = "interact"  # SEGUINTE desativado: interagir com o slide (sem carregar SEGUINTE)
 ASSIST_ADVANCE = "advance"  # sem SEGUINTE utilizável: avançar manualmente
 DIAGNOSTIC_TOP = 10
@@ -384,13 +385,20 @@ class Runner:
                 continue
             try:
                 feats = frame.evaluate(HOTSPOT_JS)
+                controls = frame.evaluate(COLLECT_JS)
             except PlaywrightError as e:
                 log.debug("Pesquisa de zonas clicáveis falhou no frame %s: %s", frame.url, e)
                 continue
+            # barra de navegação do leitor: a faixa horizontal do controlo de avançar
+            nexts = [c for c in controls if is_blocked_next(c) or (score(c) or 0) >= MIN_SCORE]
             for f in feats:
                 # exclui navegação: termos negativos/positivos (score None ou > 0) e SEGUINTE
-                if score(f) == 0 and not is_blocked_next(f):
-                    found.append(describe(f))
+                if score(f) != 0 or is_blocked_next(f):
+                    continue
+                if any(abs(f["y"] - n["y"]) <= max(n["h"], f["h"]) for n in nexts):
+                    log.debug("Zona clicável ignorada (barra de navegação): %s", describe(f))
+                    continue
+                found.append(describe(f))
         return found
 
     def wait_until_ready(self, timeout: float = READY_TIMEOUT) -> bool:
@@ -417,6 +425,9 @@ class Runner:
                     self.assist = ASSIST_INTERACT
                     log.warning("SEGUINTE desativado há %.0f s: se o slide pedir uma interação, "
                                 "faça-a no browser.", self.opts.ready_alert)
+                if checks and checks % READY_PROGRESS_EVERY == 0:
+                    log.info("Ainda à espera que o SEGUINTE fique ativo (%.0f s).",
+                             time.monotonic() - start)
                 checks += 1
                 self._pause(READY_POLL)
         finally:

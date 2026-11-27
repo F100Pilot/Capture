@@ -167,3 +167,4 @@ def test_interactive_slide_alerts_user_and_continues(course_server, tmp_path, ca
     assert events == ["enabled", "next"]
     # zona clicável detetada logo (antes dos 60 s de ready_alert) e descrita no alerta
     assert "parece pedir uma interação" in caplog.text and 'div "b)" #piece' in caplog.text
+    assert ".component_base.std.outline" not in caplog.text.split("parece pedir")[1]  # leitor
