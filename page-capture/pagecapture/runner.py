@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import csv
 import logging
+import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
 from PIL import Image
-from playwright.sync_api import BrowserContext, Frame, Page
+from playwright.sync_api import BrowserContext, Frame, Page, Playwright
 from playwright.sync_api import Error as PlaywrightError
 
 from .imagediff import changed_fraction, thumbnail
@@ -27,6 +28,8 @@ CLICK_TIMEOUT_MS = 5000
 SCREENSHOT_TIMEOUT_MS = 10000
 MAX_MISSED_CLICKS = 2
 DIAGNOSTIC_TOP = 10
+BROWSER_HINT = ("Experimente: python -m playwright install chromium "
+                "(ou --channel chrome / --channel msedge; em último caso --no-sandbox)")
 
 COLLECT_JS = r"""
 () => {
@@ -76,6 +79,20 @@ CSV_FIELDS = [
 
 class BrowserClosedError(RuntimeError):
     """Todas as janelas do browser foram fechadas."""
+
+
+class StopRequested(Exception):
+    """Paragem pedida pelo utilizador (interface web)."""
+
+
+def launch_context(pw: Playwright, profile: Path, *, viewport: dict[str, int],
+                   headless: bool = False, channel: str | None = None, sandbox: bool = True,
+                   executable_path: str | None = None) -> BrowserContext:
+    """Browser com perfil persistente (a sessão de login fica no perfil local)."""
+    return pw.chromium.launch_persistent_context(
+        str(profile), headless=headless, channel=channel, viewport=viewport,
+        chromium_sandbox=sandbox, executable_path=executable_path,
+    )
 
 
 @dataclass(frozen=True)
@@ -153,10 +170,16 @@ class Recorder:
 
 
 class Runner:
-    def __init__(self, context: BrowserContext, recorder: Recorder, opts: RunOptions):
+    def __init__(self, context: BrowserContext, recorder: Recorder, opts: RunOptions,
+                 stop_event: threading.Event | None = None):
         self.context = context
         self.recorder = recorder
         self.opts = opts
+        self._stop = stop_event
+
+    def _check_stop(self) -> None:
+        if self._stop is not None and self._stop.is_set():
+            raise StopRequested
 
     # --- browser -----------------------------------------------------------------------------
     def current_page(self) -> Page:
@@ -168,6 +191,7 @@ class Runner:
 
     def _screenshot(self) -> tuple[bytes, Image.Image] | None:
         for attempt in (1, 2):
+            self._check_stop()
             page = self.current_page()
             try:
                 png = page.screenshot(full_page=self.opts.full_page, timeout=SCREENSHOT_TIMEOUT_MS)
@@ -277,6 +301,12 @@ class Runner:
 
     # --- loop principal ----------------------------------------------------------------------
     def run(self) -> None:
+        try:
+            self._run()
+        except StopRequested:
+            log.info("Paragem pedida; a terminar.")
+
+    def _run(self) -> None:
         shot = self._screenshot()
         if shot is None:
             raise RuntimeError("Não foi possível capturar a página inicial.")
@@ -285,6 +315,7 @@ class Runner:
 
         missed = 0
         while self.recorder.count < self.opts.max_pages:
+            self._check_stop()
             control = self.click_next() if missed < MAX_MISSED_CLICKS else None
             if control is not None:
                 result = self.wait_for_change(ref, self.opts.change_timeout)

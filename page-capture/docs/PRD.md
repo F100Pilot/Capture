@@ -27,6 +27,9 @@ visual de cada página: abre o conteúdo no browser, captura cada página nova e
 - `pagecapture/runner.py` — recolha JS por frame, clique top-3, deteção de mudança + estabilização,
   `Recorder` (PNG + CSV, deteção de duplicados).
 - `capture.py` — CLI, arranque do browser, códigos de saída 0/1/2.
+- `pagecapture/webui.py` + `ui.html` + `capture_ui.py` — interface web local (127.0.0.1, stdlib
+  http.server, token por sessão, verificação de Host); o Playwright corre numa thread dedicada.
+- `pagecapture/validators.py` — validação partilhada CLI/interface.
 
 ## Parâmetros
 Mudança ≥ 0.003 (polling 0,4 s); estabilização: diferença consecutiva < 0.001 (máx. 6 s);

@@ -4,66 +4,32 @@ from __future__ import annotations
 
 import argparse
 import logging
-import re
 import sys
 from pathlib import Path
-from urllib.parse import urlparse
 
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import sync_playwright
 
 from pagecapture import __version__
-from pagecapture.runner import BrowserClosedError, Recorder, Runner, RunOptions
+from pagecapture.runner import (
+    BROWSER_HINT,
+    BrowserClosedError,
+    Recorder,
+    Runner,
+    RunOptions,
+    launch_context,
+)
+from pagecapture.validators import (
+    fraction_arg,
+    int_min1,
+    positive_float,
+    url_arg,
+    viewport_arg,
+)
 
 EXIT_OK, EXIT_ERROR, EXIT_BROWSER = 0, 1, 2
 GOTO_TIMEOUT_MS = 60000
 log = logging.getLogger("pagecapture")
-
-
-def url_arg(value: str) -> str:
-    parsed = urlparse(value)
-    if parsed.scheme in ("http", "https") and parsed.netloc:
-        return value
-    if parsed.scheme == "file" and parsed.path:
-        return value
-    raise argparse.ArgumentTypeError("URL inválido: use http://, https:// ou file://")
-
-
-def viewport_arg(value: str) -> dict[str, int]:
-    m = re.fullmatch(r"(\d{2,5})[xX](\d{2,5})", value.strip())
-    if not m:
-        raise argparse.ArgumentTypeError("viewport inválido: use LARGURAxALTURA, ex. 1366x768")
-    width, height = int(m[1]), int(m[2])
-    if not (200 <= width <= 10000 and 200 <= height <= 10000):
-        raise argparse.ArgumentTypeError("viewport fora dos limites (200-10000 px)")
-    return {"width": width, "height": height}
-
-
-def int_min1(value: str) -> int:
-    try:
-        n = int(value)
-    except ValueError:
-        raise argparse.ArgumentTypeError(f"inteiro inválido: {value}") from None
-    if n < 1:
-        raise argparse.ArgumentTypeError("tem de ser >= 1")
-    return n
-
-
-def positive_float(value: str) -> float:
-    try:
-        x = float(value)
-    except ValueError:
-        raise argparse.ArgumentTypeError(f"número inválido: {value}") from None
-    if not x > 0:
-        raise argparse.ArgumentTypeError("tem de ser > 0")
-    return x
-
-
-def fraction_arg(value: str) -> float:
-    x = positive_float(value)
-    if x >= 1:
-        raise argparse.ArgumentTypeError("tem de estar entre 0 e 1 (ex. 0.003)")
-    return x
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -135,14 +101,13 @@ def main(argv: list[str] | None = None) -> int:
     try:
         with sync_playwright() as pw:
             try:
-                context = pw.chromium.launch_persistent_context(
-                    str(args.profile), headless=args.headless, channel=args.channel,
-                    viewport=args.viewport, chromium_sandbox=not args.no_sandbox,
+                context = launch_context(
+                    pw, args.profile, viewport=args.viewport, headless=args.headless,
+                    channel=args.channel, sandbox=not args.no_sandbox,
                 )
             except PlaywrightError as e:
                 log.error("O browser não abriu: %s", str(e).splitlines()[0])
-                log.error("Experimente: python -m playwright install chromium "
-                          "(ou --channel chrome / --channel msedge; em último caso --no-sandbox)")
+                log.error("%s", BROWSER_HINT)
                 return EXIT_BROWSER
             try:
                 return _session(context, args)

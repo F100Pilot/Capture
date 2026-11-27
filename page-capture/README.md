@@ -15,7 +15,26 @@ python -m playwright install chromium
 Requisitos: Python ≥ 3.10. Dependências fixadas: playwright 1.65.2, pillow 13.0.0
 (dev: pytest 9.2.0, ruff 0.17.6).
 
-## Utilização
+## Interface no browser (recomendado)
+
+Duplo clique em `ui.bat`, ou:
+
+```powershell
+.\.venv\Scripts\python.exe capture_ui.py
+```
+
+Abre `http://127.0.0.1:8765/` no browser predefinido:
+
+1. Preencha o URL (e o browser: Edge por omissão) e carregue em **1. Abrir browser**.
+2. Faça login na janela que abriu e navegue até à primeira página a capturar.
+3. Carregue em **2. Login feito — começar captura**. **Parar** termina em segurança.
+4. O registo e a galeria das capturas atualizam-se sozinhos; capturas anteriores ficam na lista.
+
+Opções do servidor: `--port`, `--out`, `--profile`, `--no-open`. A interface só escuta em
+`127.0.0.1` e exige um token por sessão para qualquer ação (proteção contra outros sites abertos
+no mesmo browser). Para sair: Ctrl+C na janela da consola.
+
+## Utilização (linha de comandos)
 
 ```powershell
 python capture.py https://lms.exemplo.pt/curso --max-pages 10 -v
@@ -66,7 +85,7 @@ Códigos de saída: `0` ok (inclui Ctrl+C), `1` erro de execução, `2` o browse
 
 ```powershell
 ruff check .
-pytest            # unit + E2E (servidor HTTP local, Chromium headless)
+pytest            # unit + E2E (servidor HTTP local, browser headless) + interface web
 pytest -m "not e2e"
 ```
 
