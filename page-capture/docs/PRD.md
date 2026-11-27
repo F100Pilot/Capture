@@ -20,7 +20,7 @@ visual de cada página: abre o conteúdo no browser, captura cada página nova e
 4. Modo assistido: sem controlo válido ou após 2 cliques sem mudança, o utilizador avança à mão;
    captura quando mudar e retoma o automático. Sem mudança durante `--manual-timeout` → termina.
 5. `index.csv` com flush por linha: n, file, timestamp_utc, url, trigger (start|click|manual|update),
-   control, changed_fraction.
+   control, changed_fraction, slide, step (estado no slide: 1 = apareceu, 2.. = atualizações).
 6. Ctrl+C termina limpo e mantém o gravado. Segue sempre a janela mais recente (popups do LMS).
 
 ## Arquitetura

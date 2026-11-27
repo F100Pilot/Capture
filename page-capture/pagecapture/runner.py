@@ -161,6 +161,7 @@ HOTSPOT_JS = r"""
 
 CSV_FIELDS = [
     "n", "file", "timestamp_utc", "url", "trigger", "control", "changed_fraction",
+    "slide", "step",  # slide: nº do slide; step: 1 = slide apareceu, 2.. = atualizações
 ]
 
 
@@ -345,6 +346,7 @@ class Recorder:
         self._rows: list[dict] = []  # n, file, ts, url, trigger, control, frac, thumb
         self._group: list[dict] = []  # capturas do slide atual (keep_last_only)
         self._slide = 0
+        self._step = 0
         self.version = 0  # muda a cada alteração (a interface usa-o para refrescar a galeria)
         self._write_csv()
 
@@ -367,7 +369,7 @@ class Recorder:
                 writer.writerow(CSV_FIELDS)
                 for r in self._rows:
                     writer.writerow([r["n"], r["file"], r["ts"], r["url"], r["trigger"],
-                                     r["control"], r["frac"]])
+                                     r["control"], r["frac"], r["slide"], r["step"]])
             os.replace(tmp, self.dir / "index.csv")
         except OSError as e:  # ex. index.csv aberto no Excel; tenta de novo na próxima
             log.warning("Não foi possível atualizar o index.csv (%s); tento de novo.", e)
@@ -385,7 +387,9 @@ class Recorder:
                 self._rows.remove(row)
             os.replace(self.dir / last["file"], self.dir / final_name)
             last["file"] = final_name
-            last["trigger"], last["control"] = first["trigger"], first["control"]
+            # mantém trigger/step do último estado (fica visível que o slide foi atualizado)
+            # e o controlo usado para chegar ao slide
+            last["control"] = last["control"] or first["control"]
             log.info("Slide %d: mantido só o estado final (%d capturas intermédias apagadas).",
                      self._slide, len(self._group) - 1)
         except OSError as e:
@@ -403,6 +407,8 @@ class Recorder:
         if trigger in self.NEW_SLIDE_TRIGGERS or self._slide == 0:
             self._finalize_slide()
             self._slide += 1
+            self._step = 0
+        self._step += 1
         if self.keep_last_only:
             n = self._slide
             k = len(self._group) + 1
@@ -414,13 +420,15 @@ class Recorder:
             fh.write(png)
         row = {"n": n, "file": name, "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                "url": url, "trigger": trigger, "control": control,
-               "frac": "" if fraction is None else f"{fraction:.4f}", "thumb": thumb}
+               "frac": "" if fraction is None else f"{fraction:.4f}", "thumb": thumb,
+               "slide": self._slide, "step": self._step}
         self._rows.append(row)
         if self.keep_last_only:
             self._group.append(row)
         self._write_csv()
         frac_txt = "" if fraction is None else f" (mudança {fraction:.2%})"
-        log.info("Página %s gravada [%s]%s", name[:-4], trigger, frac_txt)
+        log.info("Página %s gravada [%s] (slide %d, estado %d)%s", name[:-4], trigger,
+                 self._slide, self._step, frac_txt)
         return n
 
     def close(self) -> None:

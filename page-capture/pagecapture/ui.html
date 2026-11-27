@@ -324,6 +324,12 @@
       const n = document.createElement('b'); n.textContent = row.n; meta.appendChild(n);
       const t = document.createElement('span'); t.className = 'tag'; t.textContent = row.trigger;
       meta.appendChild(t);
+      if (row.slide) {
+        const sl = document.createElement('span'); sl.className = 'tag';
+        sl.textContent = 'slide ' + row.slide + ' · estado ' + row.step;
+        if (+row.step > 1) sl.title = 'Slide atualizado: estado ' + row.step;
+        meta.appendChild(document.createTextNode(' ')); meta.appendChild(sl);
+      }
       const c = document.createElement('div'); c.className = 'ctl';
       c.textContent = row.control ? 'via ' + row.control
         : ({ manual: 'avanço manual', update: 'informação nova no slide', start: 'página inicial' }[row.trigger] || '—');
@@ -355,9 +361,13 @@
     $('btn-delete').textContent = 'Apagar selecionadas' + (selected.size ? ' (' + selected.size + ')' : '');
   }
   $('btn-sel-inter').addEventListener('click', () => {
-    // intermédio = há a seguir uma captura «update» do mesmo slide
+    // intermédio = estado de um slide que não é o último desse slide
+    const last = {};
+    for (const r of shownRows) if (r.slide) last[r.slide] = Math.max(last[r.slide] || 0, +r.step);
     shownRows.forEach((r, i) => {
-      if (shownRows[i + 1] && shownRows[i + 1].trigger === 'update') selected.add(r.file);
+      const inter = r.slide ? +r.step < last[r.slide]
+        : shownRows[i + 1] && shownRows[i + 1].trigger === 'update';  // capturas antigas
+      if (inter) selected.add(r.file);
     });
     updateSelection();
   });

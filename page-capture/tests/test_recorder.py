@@ -56,8 +56,10 @@ def test_keep_last_only_keeps_final_state_per_slide(tmp_path):
     assert (run_dir / "0002.png").read_bytes() == shots["2b"]
     with open(run_dir / "index.csv", encoding="utf-8") as fh:
         rows = list(csv.DictReader(fh))
-    assert [(r["n"], r["file"], r["trigger"], r["control"]) for r in rows] == [
-        ("1", "0001.png", "start", ""), ("2", "0002.png", "click", "button SEGUINTE")]
+    # a captura que fica mostra que o slide foi atualizado (trigger/estado do último estado)
+    assert [(r["n"], r["file"], r["trigger"], r["control"], r["slide"], r["step"])
+            for r in rows] == [("1", "0001.png", "update", "", "1", "3"),
+                               ("2", "0002.png", "update", "button SEGUINTE", "2", "2")]
 
 
 def test_delete_captures_moves_to_trash_and_updates_index(tmp_path):
@@ -72,6 +74,9 @@ def test_delete_captures_moves_to_trash_and_updates_index(tmp_path):
     assert sorted(p.name for p in run_dir.glob("*.png")) == ["0003.png"]
     assert sorted(p.name for p in (run_dir / "apagadas").glob("*.png")) == ["0001.png", "0002.png"]
     with open(run_dir / "index.csv", encoding="utf-8") as fh:
-        assert [r["file"] for r in csv.DictReader(fh)] == ["0003.png"]
+        rows = list(csv.DictReader(fh))
+    # depois de apagar os intermédios, continua a ver-se que o slide 1 teve atualizações
+    assert [(r["file"], r["trigger"], r["slide"], r["step"]) for r in rows] == [
+        ("0003.png", "update", "1", "3")]
     with open(run_dir / "apagadas" / "index.csv", encoding="utf-8") as fh:
         assert [r["file"] for r in csv.DictReader(fh)] == ["0001.png", "0002.png"]  # rastreável
