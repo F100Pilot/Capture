@@ -72,7 +72,7 @@ Páginas repetidas (quase iguais a uma já gravada) nunca são gravadas; 5 repet
 | `--change-threshold` | `0.003` | fração mínima de píxeis alterados |
 | `--change-timeout` | `15` | segundos à espera de mudança após clique |
 | `--manual-timeout` | `300` | segundos à espera em modo assistido |
-| `--full-page` | — | screenshot da página inteira |
+| `--full-page` | — | grava a página inteira (só 1 captura por página gravada; não usar em Storyline, que se reajusta a cada redimensionamento) |
 | `--headless` | — | sem janela (não permite login manual) |
 | `--no-sandbox` | — | desliga a sandbox do browser (ligada por omissão; usar só se o browser não abrir) |
 | `--no-prompt` | — | não esperar ENTER |

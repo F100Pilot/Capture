@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="pt">
+<head><meta charset="utf-8"><title>Página alta</title>
+<style>
+  body { margin: 0; font-family: sans-serif; }
+  .content { height: 2000px; background: linear-gradient(#ffffff, #8899bb); padding: 40px; }
+  h1 { font-size: 60px; margin: 0; }
+  #next { position: fixed; right: 30px; bottom: 30px; font-size: 18px; padding: 8px 18px; }
+</style></head>
+<body>
+<div class="content"><h1 id="title">Parte 1</h1></div>
+<button id="next">Next</button>
+<script>
+  window.resizes = 0;  // cada screenshot full page redimensiona a página
+  addEventListener('resize', () => { window.resizes++; });
+  document.getElementById('next').addEventListener('click', () => {
+    document.getElementById('title').textContent = 'Parte 2 — conteúdo diferente';
+    document.body.style.background = '#223';
+    document.querySelector('.content').style.background = 'linear-gradient(#ffe, #b98)';
+    document.getElementById('next').hidden = true;
+  });
+</script>
+</body>
+</html>

@@ -239,12 +239,24 @@ class Runner:
             self._check_stop()
             page = self.current_page()
             try:
-                png = page.screenshot(full_page=self.opts.full_page, timeout=SCREENSHOT_TIMEOUT_MS)
+                # nunca full_page aqui: redimensiona a página a cada captura (Storyline reajusta)
+                png = page.screenshot(timeout=SCREENSHOT_TIMEOUT_MS)
                 return png, thumbnail(png)
             except PlaywrightError as e:
                 log.debug("Screenshot falhou (tentativa %d): %s", attempt, e)
                 time.sleep(POLL_INTERVAL)
         return None
+
+    def _final_png(self, png: bytes) -> bytes:
+        """PNG a gravar: com --full-page, uma única captura da página inteira; senão o mesmo."""
+        if not self.opts.full_page:
+            return png
+        try:
+            return self.current_page().screenshot(full_page=True, timeout=SCREENSHOT_TIMEOUT_MS)
+        except PlaywrightError as e:
+            log.warning("Captura da página inteira falhou; gravo a área visível: %s",
+                        str(e).splitlines()[0])
+            return png
 
     def _visible_frames(self, page: Page) -> list[Frame | None]:
         frames: list[Frame | None] = []
@@ -383,7 +395,7 @@ class Runner:
         if shot is None:
             raise RuntimeError("Não foi possível capturar a página inicial.")
         png, ref = self._settle(*shot)
-        self.recorder.save(png, ref, self.current_page().url, "start", "", None)
+        self.recorder.save(self._final_png(png), ref, self.current_page().url, "start", "", None)
 
         missed = 0
         duplicates = 0
@@ -431,7 +443,8 @@ class Runner:
             missed = 0
             blocked_since = None
             png, ref, frac = result
-            if self.recorder.save(png, ref, self.current_page().url, trigger, control, frac):
+            if self.recorder.save(self._final_png(png), ref, self.current_page().url, trigger,
+                                  control, frac):
                 duplicates = 0
                 continue
             duplicates += 1
