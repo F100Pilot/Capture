@@ -26,6 +26,7 @@ TOP_CANDIDATES = 3
 CLICK_TIMEOUT_MS = 5000
 SCREENSHOT_TIMEOUT_MS = 10000
 MAX_MISSED_CLICKS = 2
+DIAGNOSTIC_TOP = 10
 
 COLLECT_JS = r"""
 () => {
@@ -182,6 +183,7 @@ class Runner:
             if frame is not page.main_frame:
                 try:
                     if frame.is_detached() or not frame.frame_element().is_visible():
+                        log.debug("Frame invisível ignorado: %s", frame.url)
                         frames.append(None)
                         continue
                 except PlaywrightError as e:
@@ -220,6 +222,8 @@ class Runner:
                 log.debug("Recolha falhou no frame %s: %s", frame.url, e)
                 features.append([])
         candidates = rank(features)
+        if not candidates and log.isEnabledFor(logging.DEBUG):
+            self._log_diagnostics(frames, features)
         for cand in candidates[:TOP_CANDIDATES]:
             log.debug("Candidato %.1f: %s", cand.score, cand.description)
         for cand in candidates[:TOP_CANDIDATES]:
@@ -231,6 +235,18 @@ class Runner:
             except PlaywrightError as e:
                 log.debug("Clique falhou em %s: %s", cand.description, e)
         return None
+
+    def _log_diagnostics(self, frames: list[Frame | None], features: list[list[dict]]) -> None:
+        """Com -v: o que a heurística viu quando não encontrou nenhum candidato."""
+        for i, (frame, feats) in enumerate(zip(frames, features, strict=True)):
+            url = frame.url if frame is not None else "(ignorado)"
+            log.debug("Frame %d: %d elementos — %s", i, len(feats), url[:150])
+        best = rank(features, min_score=float("-inf"))[:DIAGNOSTIC_TOP]
+        if not best:
+            log.debug("Nenhum elemento pontuável (todos excluídos ou nenhum recolhido).")
+        for cand in best:
+            log.debug("  abaixo do mínimo: %.1f frame %d %s",
+                      cand.score, cand.frame_index, cand.description)
 
     # --- deteção de mudança ------------------------------------------------------------------
     def _settle(self, png: bytes, thumb: Image.Image) -> tuple[bytes, Image.Image]:

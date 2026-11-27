@@ -128,9 +128,10 @@ def _session(context, args: argparse.Namespace) -> int:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     logging.basicConfig(
-        level=logging.DEBUG if args.verbose else logging.INFO,
-        format="%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S",
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S",
     )
+    if args.verbose:  # só a ferramenta; Pillow/asyncio ficam em INFO
+        log.setLevel(logging.DEBUG)
     try:
         with sync_playwright() as pw:
             try:
