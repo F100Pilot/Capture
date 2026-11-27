@@ -65,7 +65,6 @@
   .card .meta b { margin-right: 6px; }
   .tag { display: inline-block; padding: 0 6px; border-radius: 4px; background: var(--chip);
          color: var(--muted); font-size: 12px; }
-  .tag.dup { color: var(--warn); }
   .ctl { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .empty { color: var(--muted); font-size: 14px; }
   a { color: var(--accent); }
@@ -267,11 +266,6 @@
       const n = document.createElement('b'); n.textContent = row.n; meta.appendChild(n);
       const t = document.createElement('span'); t.className = 'tag'; t.textContent = row.trigger;
       meta.appendChild(t);
-      if (row.duplicate_of) {
-        const d = document.createElement('span'); d.className = 'tag dup';
-        d.textContent = ' igual a ' + row.duplicate_of; meta.appendChild(document.createTextNode(' '));
-        meta.appendChild(d);
-      }
       const c = document.createElement('div'); c.className = 'ctl';
       c.textContent = row.control ? 'via ' + row.control : (row.trigger === 'manual' ? 'avanço manual' : 'página inicial');
       c.title = row.control || ''; meta.appendChild(c);

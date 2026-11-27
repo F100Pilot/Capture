@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="pt">
+<head><meta charset="utf-8"><title>Ciclo</title>
+<style>
+  body { margin: 0; font-family: sans-serif; }
+  h1 { font-size: 60px; margin: 60px; }
+  #next { position: fixed; right: 30px; bottom: 30px; font-size: 18px; padding: 8px 18px; }
+</style></head>
+<body>
+<h1 id="title">Página A</h1>
+<button id="next">Next</button>
+<script>
+  // conteúdo em ciclo: A -> B -> A -> B ...
+  window.clicks = 0;
+  document.getElementById('next').addEventListener('click', () => {
+    window.clicks++;
+    const t = document.getElementById('title');
+    const toB = t.textContent === 'Página A';
+    t.textContent = toB ? 'Página B' : 'Página A';
+    document.body.style.background = toB ? '#c8d4e8' : '#ffffff';
+  });
+</script>
+</body>
+</html>

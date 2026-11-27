@@ -27,6 +27,7 @@ TOP_CANDIDATES = 3
 CLICK_TIMEOUT_MS = 5000
 SCREENSHOT_TIMEOUT_MS = 10000
 MAX_MISSED_CLICKS = 2
+MAX_CONSECUTIVE_DUPLICATES = 5
 DIAGNOSTIC_TOP = 10
 BROWSER_HINT = ("Experimente: python -m playwright install chromium "
                 "(ou --channel chrome / --channel msedge; em último caso --no-sandbox)")
@@ -111,7 +112,7 @@ BLOCKER_JS = r"""
 """
 
 CSV_FIELDS = [
-    "n", "file", "timestamp_utc", "url", "trigger", "control", "changed_fraction", "duplicate_of",
+    "n", "file", "timestamp_utc", "url", "trigger", "control", "changed_fraction",
 ]
 
 
@@ -181,22 +182,24 @@ class Recorder:
         return None
 
     def save(self, png: bytes, thumb: Image.Image, url: str, trigger: str, control: str,
-             fraction: float | None) -> int:
+             fraction: float | None) -> int | None:
+        """Grava a página. Repetida (quase igual a uma já gravada) -> não grava e devolve None."""
+        dup = self._find_duplicate(thumb)
+        if dup:
+            log.warning("Página repetida (igual à página %d): não gravada.", dup)
+            return None
         n = self.count + 1
         name = f"{n:04d}.png"
-        dup = self._find_duplicate(thumb)
         with open(self.dir / name, "xb") as fh:
             fh.write(png)
         self._writer.writerow([
             n, name, datetime.now(timezone.utc).isoformat(timespec="seconds"), url, trigger,
-            control, "" if fraction is None else f"{fraction:.4f}", dup or "",
+            control, "" if fraction is None else f"{fraction:.4f}",
         ])
         self._file.flush()
         self._thumbs.append(thumb)
         frac_txt = "" if fraction is None else f" (mudança {fraction:.2%})"
         log.info("Página %d gravada [%s]%s", n, trigger, frac_txt)
-        if dup:
-            log.warning("A página %d parece igual à página %d.", n, dup)
         return n
 
     def close(self) -> None:
@@ -382,6 +385,7 @@ class Runner:
         self.recorder.save(png, ref, self.current_page().url, "start", "", None)
 
         missed = 0
+        duplicates = 0
         blocked_since: float | None = None
         while self.recorder.count < self.opts.max_pages:
             self._check_stop()
@@ -422,5 +426,12 @@ class Runner:
             missed = 0
             blocked_since = None
             png, ref, frac = result
-            self.recorder.save(png, ref, self.current_page().url, trigger, control, frac)
+            if self.recorder.save(png, ref, self.current_page().url, trigger, control, frac):
+                duplicates = 0
+                continue
+            duplicates += 1
+            if duplicates >= MAX_CONSECUTIVE_DUPLICATES:
+                log.warning("%d páginas repetidas seguidas: o conteúdo parece estar em ciclo; "
+                            "a terminar.", duplicates)
+                return
         log.info("Atingido o limite de %d páginas.", self.opts.max_pages)

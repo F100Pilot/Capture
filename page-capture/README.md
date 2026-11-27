@@ -50,7 +50,9 @@ python capture.py https://lms.exemplo.pt/curso --max-pages 10 -v
 5. Ctrl+C termina em segurança; o que já foi gravado fica.
 
 Resultado: `capturas/AAAA-MM-DD_HHMMSS/` com `0001.png`, `0002.png`, … e `index.csv`
-(`n, file, timestamp_utc, url, trigger, control, changed_fraction, duplicate_of`).
+(`n, file, timestamp_utc, url, trigger, control, changed_fraction`).
+Páginas repetidas (quase iguais a uma já gravada) nunca são gravadas; 5 repetidas seguidas
+(conteúdo em ciclo) terminam a captura.
 
 ### Opções
 
