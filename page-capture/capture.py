@@ -40,8 +40,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("url", type=url_arg, help="URL inicial (http, https ou file)")
     p.add_argument("--out", type=Path, default=Path("capturas"), help="pasta base das capturas")
-    p.add_argument("--profile", type=Path, default=Path(".browser-profile"),
-                   help="perfil local do browser (mantém a sessão; não versionar)")
     p.add_argument("--channel", choices=["chrome", "msedge"],
                    help="usar o Chrome/Edge instalado em vez do Chromium do Playwright")
     p.add_argument("--viewport", type=viewport_arg, default=viewport_arg("1366x768"),
@@ -111,7 +109,7 @@ def main(argv: list[str] | None = None) -> int:
         with sync_playwright() as pw:
             try:
                 context = launch_context(
-                    pw, args.profile, viewport=args.viewport, headless=args.headless,
+                    pw, viewport=args.viewport, headless=args.headless,
                     channel=args.channel, sandbox=not args.no_sandbox,
                 )
             except PlaywrightError as e:

@@ -39,7 +39,7 @@ Abre `http://127.0.0.1:8765/` no browser predefinido:
    Faça a interação na janela do browser da captura; o estado intermédio é gravado e o automático
    retoma.
 
-Opções do servidor: `--port`, `--out`, `--profile`, `--no-open`. A interface só escuta em
+Opções do servidor: `--port`, `--out`, `--no-open`. A interface só escuta em
 `127.0.0.1` e exige um token por sessão para qualquer ação (proteção contra outros sites abertos
 no mesmo browser). Para sair: Ctrl+C na janela da consola.
 
@@ -49,8 +49,8 @@ no mesmo browser). Para sair: Ctrl+C na janela da consola.
 python capture.py https://lms.exemplo.pt/curso --max-pages 10 -v
 ```
 
-1. O browser abre no URL. Faça login manualmente (as credenciais nunca são guardadas; a sessão fica
-   no perfil local `.browser-profile/`).
+1. O browser abre no URL em modo privado (incógnito). Faça login manualmente (as credenciais e a
+   sessão nunca são guardadas; nada fica em disco ao fechar).
 2. Abra a primeira página a capturar e carregue ENTER na consola.
 3. A ferramenta captura, clica em "avançar", espera que a página mude e estabilize, e repete.
 4. Se não encontrar o controlo (ou 2 cliques seguidos não mudarem nada) entra em **modo assistido**:
@@ -69,7 +69,6 @@ Páginas repetidas (quase iguais a uma já gravada) nunca são gravadas; 5 repet
 | Opção | Default | Descrição |
 |---|---|---|
 | `--out` | `capturas` | pasta base (uma subpasta nova por execução) |
-| `--profile` | `.browser-profile` | perfil do browser (cookies de sessão) |
 | `--channel chrome\|msedge` | — | usar Chrome/Edge instalado |
 | `--viewport LxA` | `1366x768` | tamanho fixo da página; `janela` usa o tamanho real da janela (sem emulação) |
 | `--next-selector CSS` | — | seletor do botão avançar (substitui a heurística) |
@@ -139,7 +138,9 @@ instalado com `python -m playwright install chromium`).
 ## Segurança e âmbito
 
 - Usar um utilizador de teste, não uma conta de formando real.
-- Nunca versionar `.browser-profile/` (cookies) nem `capturas/` (conteúdo possivelmente proprietário).
+- O browser abre sempre em modo privado (incógnito): nada fica guardado (cookies, sessão,
+  histórico); é preciso fazer login em cada execução.
+- Nunca versionar `capturas/` (conteúdo possivelmente proprietário).
 - Atenção: a heurística não clica em "Enviar/Submit" de propósito, mas um layout atípico pode levar a
   um clique errado que fica registado no LMS.
 - Fora de âmbito: responder a quizzes, gravar vídeo/áudio, contornar DRM/anti-bot, gerar PDF.

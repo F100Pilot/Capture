@@ -232,3 +232,28 @@ def test_close_gracefully_lets_lesson_report_exit(course_server, tmp_path, beaco
             break
         time.sleep(0.1)
     assert "/lms/exit" in beacons  # a lição conseguiu avisar o LMS da saída
+
+
+@pytest.mark.e2e
+def test_browser_is_private_nothing_persists(course_server):
+    from pagecapture.runner import launch_context
+
+    exe = os.environ.get("PC_BROWSER_EXECUTABLE") or None
+    url = course_server.replace("index.html", "loop.html")
+    with sync_playwright() as pw:
+        ctx = launch_context(pw, viewport={"width": 800, "height": 600}, headless=True,
+                             sandbox=False, executable_path=exe)
+        page = ctx.new_page()
+        page.goto(url)
+        page.evaluate("() => { document.cookie = 'sessao=1; max-age=31536000'; "
+                      "localStorage.setItem('x', '1'); }")
+        assert "sessao=1" in page.evaluate("() => document.cookie")
+        close_gracefully(ctx)
+
+        ctx = launch_context(pw, viewport={"width": 800, "height": 600}, headless=True,
+                             sandbox=False, executable_path=exe)
+        page = ctx.new_page()
+        page.goto(url)
+        assert page.evaluate("() => document.cookie") == ""  # nem cookies persistentes
+        assert page.evaluate("() => localStorage.getItem('x')") is None
+        close_gracefully(ctx)

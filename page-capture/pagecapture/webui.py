@@ -127,10 +127,9 @@ class LogBuffer(logging.Handler):
 class Controller:
     """Uma sessão de captura de cada vez, numa thread dedicada ao Playwright."""
 
-    def __init__(self, out: Path, profile: Path, *, headless: bool = False,
+    def __init__(self, out: Path, *, headless: bool = False,
                  executable_path: str | None = None):
         self.out = Path(out)
-        self.profile = Path(profile)
         self.headless = headless
         self.executable_path = executable_path
         self.logs = LogBuffer()
@@ -250,7 +249,7 @@ class Controller:
             with sync_playwright() as pw:
                 try:
                     context = launch_context(
-                        pw, self.profile, viewport=p.viewport, headless=self.headless,
+                        pw, viewport=p.viewport, headless=self.headless,
                         channel=p.channel, sandbox=p.sandbox,
                         executable_path=self.executable_path,
                     )

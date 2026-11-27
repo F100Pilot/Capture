@@ -170,17 +170,23 @@ class StopRequested(Exception):
     """Paragem pedida pelo utilizador (interface web)."""
 
 
-def launch_context(pw: Playwright, profile: Path, *, viewport: dict[str, int] | None,
+def launch_context(pw: Playwright, *, viewport: dict[str, int] | None,
                    headless: bool = False, channel: str | None = None, sandbox: bool = True,
                    executable_path: str | None = None) -> BrowserContext:
-    """Browser com perfil persistente (a sessão de login fica no perfil local).
+    """Browser em modo privado (incógnito): contexto novo e isolado, sem perfil em disco.
 
+    Nada fica guardado (cookies, histórico, sessão); cada execução começa com login.
     viewport=None: sem emulação de tamanho; a página usa o tamanho real da janela.
     """
-    return pw.chromium.launch_persistent_context(
-        str(profile), headless=headless, channel=channel, viewport=viewport,
-        no_viewport=viewport is None, chromium_sandbox=sandbox, executable_path=executable_path,
+    browser = pw.chromium.launch(
+        headless=headless, channel=channel, chromium_sandbox=sandbox,
+        executable_path=executable_path,
     )
+    try:
+        return browser.new_context(viewport=viewport, no_viewport=viewport is None)
+    except PlaywrightError:
+        browser.close()
+        raise
 
 
 @dataclass(frozen=True)
@@ -227,8 +233,11 @@ def close_gracefully(context: BrowserContext, timeout_ms: int = 5000) -> None:
             page.wait_for_event("close", timeout=timeout_ms)
         except PlaywrightError as e:
             log.debug("Fecho normal da janela falhou: %s", str(e).splitlines()[0])
+    browser = context.browser
     try:
-        context.close()
+        context.close()  # contexto privado: descarta cookies/sessão
+        if browser is not None:
+            browser.close()
     except Exception as e:  # o browser pode já ter morrido (Ctrl+C)
         log.debug("Erro ao fechar o browser: %s", e)
 

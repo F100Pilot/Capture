@@ -12,7 +12,7 @@ from pagecapture.webui import Controller, UIServer, parse_params
 @pytest.fixture
 def ui(tmp_path):
     exe = os.environ.get("PC_BROWSER_EXECUTABLE") or None
-    ctrl = Controller(tmp_path / "out", tmp_path / "profile", headless=True, executable_path=exe)
+    ctrl = Controller(tmp_path / "out", headless=True, executable_path=exe)
     srv = UIServer(ctrl, "127.0.0.1", 0)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     yield srv

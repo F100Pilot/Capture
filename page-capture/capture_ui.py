@@ -19,8 +19,6 @@ def main(argv: list[str] | None = None) -> int:
                                 description="Interface web local do page-capture.")
     p.add_argument("--port", type=int, default=8765, help="porta local (default 8765)")
     p.add_argument("--out", type=Path, default=Path("capturas"), help="pasta base das capturas")
-    p.add_argument("--profile", type=Path, default=Path(".browser-profile"),
-                   help="perfil local do browser (mantém a sessão; não versionar)")
     p.add_argument("--no-open", action="store_true", help="não abrir o browser automaticamente")
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     args = p.parse_args(argv)
@@ -29,7 +27,7 @@ def main(argv: list[str] | None = None) -> int:
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s",
                         datefmt="%H:%M:%S")
-    controller = Controller(args.out, args.profile)
+    controller = Controller(args.out)
     try:
         server = UIServer(controller, "127.0.0.1", args.port)
     except OSError as e:
