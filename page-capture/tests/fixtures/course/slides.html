@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="pt">
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; height: 100%; font-family: sans-serif; background: #fff; }
+  .slide { display: none; position: absolute; inset: 0; padding: 30px; }
+  .slide.active { display: block; }
+  .slide.fade { opacity: 0; transition: opacity 0.6s; }
+  .slide.fade.in { opacity: 1; }
+  h1 { font-size: 40px; margin: 0 0 20px; }
+  p { font-size: 22px; line-height: 1.5; }
+  .bl { position: absolute; left: 30px; bottom: 30px; }
+  .br { position: absolute; right: 30px; bottom: 30px; }
+  button { font-size: 18px; padding: 8px 18px; }
+  .icon-btn { width: 48px; height: 48px; padding: 0; }
+  .nav-arrow-right, .nav-arrow-left { width: 50px; height: 50px; background: #36c; cursor: pointer; }
+  .nav-arrow-right { clip-path: polygon(0 0, 100% 50%, 0 100%); }
+  .nav-arrow-left { clip-path: polygon(100% 0, 0 50%, 100% 100%); }
+  .chev { font-size: 48px; cursor: pointer; padding: 0 10px; }
+</style>
+</head>
+<body>
+<!-- 1: Next + Previous -->
+<section class="slide" data-n="1">
+  <h1>1. Introdução</h1>
+  <p>Bem-vindo ao curso de teste. Esta é a primeira página.</p>
+  <button class="bl" data-go="-1">Previous</button>
+  <button class="br" data-go="1">Next</button>
+</section>
+<!-- 2: ícone com aria-label "Seguinte" + Voltar -->
+<section class="slide" data-n="2">
+  <h1>2. Objetivos</h1>
+  <p>Identificar os conceitos principais e aplicar os procedimentos.</p>
+  <button class="bl" data-go="-1">Voltar</button>
+  <button class="br icon-btn" aria-label="Seguinte" data-go="1">
+    <svg width="24" height="24" viewBox="0 0 24 24"><path d="M8 4l8 8-8 8" stroke="#000" stroke-width="3" fill="none"/></svg>
+  </button>
+</section>
+<!-- 3: div.nav-arrow-right sem texto (+ seta esquerda como armadilha) -->
+<section class="slide" data-n="3">
+  <h1>3. Conceitos</h1>
+  <p>Os conceitos são apresentados nesta página com uma navegação por setas.</p>
+  <div class="bl nav-arrow-left" data-go="-1"></div>
+  <div class="br nav-arrow-right" data-go="1"></div>
+</section>
+<!-- 4: link "Continuar ›" com fade e atraso de 800 ms -->
+<section class="slide fade" data-n="4">
+  <h1>4. Procedimento A</h1>
+  <p>Primeiro passo do procedimento: verificar o estado inicial do sistema.</p>
+  <p>Registar o resultado antes de prosseguir.</p>
+  <a href="#" class="br" data-go="1" data-delay="800">Continuar ›</a>
+</section>
+<!-- 5: mesmo template, texto diferente, span "›" com tabindex -->
+<section class="slide fade" data-n="5">
+  <h1>5. Procedimento B</h1>
+  <p>Segundo passo do procedimento: confirmar os valores obtidos no ecrã.</p>
+  <p>Anotar qualquer discrepância encontrada.</p>
+  <span class="br chev" tabindex="0" data-go="1" data-delay="800">›</span>
+</section>
+<!-- 6: final, só "Sair" -->
+<section class="slide" data-n="6">
+  <h1>6. Fim</h1>
+  <p>Concluiu o curso de teste.</p>
+  <button class="br" data-exit="1">Sair</button>
+</section>
+<script>
+  window.clickLog = [];
+  const slides = Array.from(document.querySelectorAll('.slide'));
+  let current = 0;
+  function show(i) {
+    slides.forEach(s => s.classList.remove('active', 'in'));
+    current = Math.max(0, Math.min(slides.length - 1, i));
+    const s = slides[current];
+    s.classList.add('active');
+    if (s.classList.contains('fade')) requestAnimationFrame(() => requestAnimationFrame(() => s.classList.add('in')));
+  }
+  document.addEventListener('click', ev => {
+    const el = ev.target.closest('[data-go],[data-exit]');
+    if (!el) return;
+    ev.preventDefault();
+    const label = (el.getAttribute('aria-label') || el.textContent || el.className).trim();
+    window.clickLog.push({slide: current + 1, label});
+    if (el.dataset.exit) return;
+    const go = parseInt(el.dataset.go, 10);
+    const delay = parseInt(el.dataset.delay || '0', 10);
+    if (delay) {
+      slides[current].classList.remove('in');
+      setTimeout(() => show(current + go), delay);
+    } else {
+      show(current + go);
+    }
+  });
+  show(0);
+</script>
+</body>
+</html>

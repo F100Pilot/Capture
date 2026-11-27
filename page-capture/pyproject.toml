@@ -1,0 +1,22 @@
+[project]
+name = "page-capture"
+version = "0.1.0"
+description = "Captura automática de conteúdo e-learning página a página (Playwright)."
+requires-python = ">=3.10"
+dependencies = ["playwright==1.65.2", "pillow==13.0.0"]
+
+[project.optional-dependencies]
+dev = ["pytest==9.2.0", "ruff==0.17.6"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+extend-exclude = [".venv", ".browser-profile", "capturas"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+markers = ["e2e: teste ponta-a-ponta com browser real (Playwright + servidor HTTP local)"]
