@@ -29,6 +29,10 @@ Abre `http://127.0.0.1:8765/` no browser predefinido:
 2. Faça login na janela que abriu e navegue até à primeira página a capturar.
 3. Carregue em **2. Login feito — começar captura**. **Parar** termina em segurança.
 4. O registo e a galeria das capturas atualizam-se sozinhos; capturas anteriores ficam na lista.
+5. Quando for preciso agir (modo assistido: ex. «Clique na peça b)» com o SEGUINTE bloqueado), a
+   interface toca um alerta, mostra uma faixa amarela e o separador passa a «⚠ Ação necessária».
+   Faça a interação na janela do browser da captura; o estado intermédio é gravado e o automático
+   retoma.
 
 Opções do servidor: `--port`, `--out`, `--profile`, `--no-open`. A interface só escuta em
 `127.0.0.1` e exige um token por sessão para qualquer ação (proteção contra outros sites abertos

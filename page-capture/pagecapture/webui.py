@@ -135,6 +135,7 @@ class Controller:
         self._message = "Pronto."
         self._run_dir: Path | None = None
         self._recorder: Recorder | None = None
+        self._runner: Runner | None = None
         self._begin = threading.Event()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -148,11 +149,13 @@ class Controller:
         lines, last = self.logs.since(since)
         with self._lock:
             rec = self._recorder
+            runner = self._runner
             return {
                 "state": self._state,
                 "message": self._message,
                 "run": self._run_dir.name if self._run_dir else None,
                 "count": rec.count if rec else 0,
+                "assist": bool(runner and runner.waiting_for_user and self._state == "capturing"),
                 "logs": lines,
                 "last_seq": last,
                 "runs": self.list_runs(),
@@ -187,6 +190,7 @@ class Controller:
             self._state, self._message = "opening", "A abrir o browser…"
             self._run_dir = None
             self._recorder = None
+            self._runner = None
             self._begin.clear()
             self._stop.clear()
             log.setLevel(logging.DEBUG if params.verbose else logging.INFO)
@@ -271,7 +275,10 @@ class Controller:
                 self._recorder, self._run_dir = rec, rec.dir
             log.info("A gravar em %s", rec.dir)
             try:
-                Runner(context, rec, p.opts, stop_event=self._stop).run()
+                runner = Runner(context, rec, p.opts, stop_event=self._stop)
+                with self._lock:
+                    self._runner = runner
+                runner.run()
             except BrowserClosedError:
                 log.warning("O browser foi fechado; a terminar.")
             except (PlaywrightError, RuntimeError) as e:

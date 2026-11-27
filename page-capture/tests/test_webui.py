@@ -62,17 +62,20 @@ def test_full_flow(ui, course_server):
     def state():
         return json.loads(request(ui, "GET", "/api/status")[1])
 
+    seen_assist = []
+
     def wait_for(states, timeout=60):
         end = time.monotonic() + timeout
         while time.monotonic() < end:
             s = state()
+            seen_assist.append(s["assist"])
             if s["state"] in states:
                 return s
             time.sleep(0.3)
         raise AssertionError(f"estado final {state()['state']}, esperado {states}")
 
     status, _ = request(ui, "POST", "/api/start", body={
-        "url": course_server, "channel": "", "manual_timeout": "2", "change_timeout": "5",
+        "url": course_server, "channel": "", "manual_timeout": "3", "change_timeout": "5",
         "no_sandbox": True})
     assert status == 200
     wait_for({"login"})
@@ -81,6 +84,7 @@ def test_full_flow(ui, course_server):
     s = wait_for({"done", "error"})
     assert s["state"] == "done", s["message"]
     assert s["count"] == 6 and s["runs"] == [s["run"]]
+    assert any(seen_assist) and not s["assist"]  # último slide sem «avançar» -> modo assistido
 
     rows = json.loads(request(ui, "GET", f"/api/runs/{s['run']}")[1])["rows"]
     assert [r["trigger"] for r in rows] == ["start"] + ["click"] * 5

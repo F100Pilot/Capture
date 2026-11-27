@@ -220,6 +220,7 @@ class Runner:
         self.recorder = recorder
         self.opts = opts
         self._stop = stop_event
+        self.waiting_for_user = False  # True enquanto o modo assistido espera pelo utilizador
 
     def _check_stop(self) -> None:
         if self._stop is not None and self._stop.is_set():
@@ -404,7 +405,11 @@ class Runner:
                           else "controlo de avançar não encontrado")
                 log.warning("Modo assistido (%s): avance manualmente no browser "
                             "(espero até %.0f s).", reason, self.opts.manual_timeout)
-                result = self.wait_for_change(ref, self.opts.manual_timeout)
+                self.waiting_for_user = True
+                try:
+                    result = self.wait_for_change(ref, self.opts.manual_timeout)
+                finally:
+                    self.waiting_for_user = False
                 if result is None:
                     log.info("Sem mudança durante %.0f s; a terminar.", self.opts.manual_timeout)
                     return
