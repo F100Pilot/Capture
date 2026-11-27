@@ -1,4 +1,5 @@
 import csv
+import logging
 import os
 
 import pytest
@@ -9,7 +10,8 @@ from pagecapture.runner import MAX_CONSECUTIVE_DUPLICATES, Recorder, Runner, Run
 
 
 @pytest.mark.e2e
-def test_course_in_iframe(course_server, tmp_path):
+def test_course_in_iframe(course_server, tmp_path, caplog):
+    caplog.set_level(logging.DEBUG, logger="pagecapture")
     # PC_BROWSER_EXECUTABLE: opcional, para ambientes onde o Chromium não veio de
     # "python -m playwright install chromium".
     exe = os.environ.get("PC_BROWSER_EXECUTABLE") or None
@@ -38,6 +40,7 @@ def test_course_in_iframe(course_server, tmp_path):
     assert [c["slide"] for c in clicks] == [1, 2, 3, 4, 5]
     labels = " ".join(c["label"] for c in clicks).lower()
     assert "previous" not in labels and "voltar" not in labels and "left" not in labels
+    assert "Captura CDP falhou" not in caplog.text  # capturas sem «clip» (não redimensiona)
 
 
 @pytest.mark.e2e
@@ -174,6 +177,7 @@ def test_interactive_slide_alerts_user_and_continues(course_server, tmp_path, ca
         rows = list(csv.DictReader(fh))
     assert [r["trigger"] for r in rows] == ["start", "update", "click"]
     assert events == ["enabled", "next"]
-    # zona clicável detetada logo (antes dos 60 s de ready_alert) e descrita no alerta
+    # zona clicável (Storyline: classe cursor-hover, sem cursor «mão» sem o rato em cima)
+    # detetada logo (antes dos 60 s de ready_alert) e descrita no alerta
     assert "parece pedir uma interação" in caplog.text and 'div "b)" #piece' in caplog.text
     assert ".component_base.std.outline" not in caplog.text.split("parece pedir")[1]  # leitor

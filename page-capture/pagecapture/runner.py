@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import csv
 import logging
 import threading
@@ -122,12 +123,18 @@ HOTSPOT_JS = r"""
 () => {
   const vw = window.innerWidth, vh = window.innerHeight;
   const out = [];
+  // clicável: cursor «mão» já aplicado, ou sinais de interação (o Storyline só mostra a mão
+  // com o rato por cima: classe cursor-hover)
+  const SIGNAL = /(^|[\s_-])(cursor-hover|hotspot|clickable|draggable)([\s_-]|$)/i;
+  const ROLES = new Set(['button', 'link', 'checkbox', 'radio', 'menuitem', 'tab', 'option']);
+  const clickable = el => getComputedStyle(el).cursor === 'pointer' ||
+    ROLES.has(el.getAttribute('role') || '') || el.hasAttribute('onclick') ||
+    SIGNAL.test(el.getAttribute('class') || '');
   for (const el of document.querySelectorAll('body *')) {
     if (out.length >= 50) break;
-    const st = getComputedStyle(el);
-    if (st.cursor !== 'pointer') continue;
+    if (!clickable(el)) continue;
     const parent = el.parentElement;
-    if (parent && getComputedStyle(parent).cursor === 'pointer') continue;  // só o topo
+    if (parent && clickable(parent)) continue;  // só o elemento de topo
     const r = el.getBoundingClientRect();
     if (r.width < 10 || r.height < 10) continue;
     if (r.right <= 0 || r.bottom <= 0 || r.left >= vw || r.top >= vh) continue;
@@ -137,7 +144,8 @@ HOTSPOT_JS = r"""
     const text = (el.innerText || el.textContent || '').trim();
     out.push({
       tag: el.tagName.toLowerCase(), role: el.getAttribute('role') || '',
-      text: text.slice(0, 200), aria: el.getAttribute('aria-label') || '',
+      text: text.slice(0, 200),
+      aria: el.getAttribute('aria-label') || el.getAttribute('data-acc-text') || '',
       title: el.getAttribute('title') || '', alt: el.getAttribute('alt') || '',
       id: el.getAttribute('id') || '', cls: typeof rawCls === 'string' ? rawCls : '',
       disabled: el.disabled === true || el.getAttribute('aria-disabled') === 'true',
@@ -261,6 +269,8 @@ class Runner:
         self.assist: str | None = None  # ASSIST_* enquanto se espera pelo utilizador
         self.last_settle_stable = False
         self._nav_bands: list[tuple[float, float]] = []  # faixas da barra de navegação (0..1)
+        self._cdp_sessions: dict[Page, object] = {}
+        self._cdp_disabled = False
 
     def _check_stop(self) -> None:
         if self._stop is not None and self._stop.is_set():
@@ -274,13 +284,37 @@ class Runner:
                 return page
         raise BrowserClosedError("Não há janelas abertas.")
 
+    def _capture(self, page: Page) -> bytes:
+        """Screenshot da área visível sem mexer no tamanho da página.
+
+        Chromium/Edge: CDP Page.captureScreenshot sem «clip» (o page.screenshot do Playwright
+        envia um clip, e o Chromium com janela aplica para isso uma emulação temporária do
+        viewport, que o Storyline vê como redimensionamento). Outros browsers ou falha do CDP:
+        page.screenshot normal.
+        """
+        if not self._cdp_disabled:
+            try:
+                session = self._cdp_sessions.get(page)
+                if session is None:
+                    session = self.context.new_cdp_session(page)
+                    self._cdp_sessions[page] = session
+                data = session.send("Page.captureScreenshot", {
+                    "format": "png", "fromSurface": True, "captureBeyondViewport": False})
+                return base64.b64decode(data["data"])
+            except PlaywrightError as e:
+                self._cdp_sessions.pop(page, None)
+                if "not supported" in str(e).lower() or "only supported" in str(e).lower():
+                    self._cdp_disabled = True
+                log.debug("Captura CDP falhou (uso a do Playwright): %s", str(e).splitlines()[0])
+        # nunca full_page aqui: redimensiona a página a cada captura (Storyline reajusta)
+        return page.screenshot(timeout=SCREENSHOT_TIMEOUT_MS)
+
     def _screenshot(self) -> tuple[bytes, Image.Image] | None:
         for attempt in (1, 2):
             self._check_stop()
             page = self.current_page()
             try:
-                # nunca full_page aqui: redimensiona a página a cada captura (Storyline reajusta)
-                png = page.screenshot(timeout=SCREENSHOT_TIMEOUT_MS)
+                png = self._capture(page)
                 return png, thumbnail(png)
             except PlaywrightError as e:
                 log.debug("Screenshot falhou (tentativa %d): %s", attempt, e)
