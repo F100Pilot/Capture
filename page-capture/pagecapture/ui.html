@@ -125,6 +125,7 @@
         </div>
         <label for="ready_alert">Alerta se o SEGUINTE continuar desativado (s)</label>
         <input id="ready_alert" name="ready_alert" type="number" min="1" value="60">
+        <label class="check"><input type="checkbox" name="keep_last" checked> Só o estado final de cada slide (apaga os intermédios)</label>
         <label class="check"><input type="checkbox" name="verbose"> Registo detalhado (diagnóstico)</label>
         <label class="check"><input type="checkbox" name="no_sandbox"> Sem sandbox (só se o browser não abrir)</label>
       </details>
@@ -161,11 +162,11 @@
   const TOKEN = document.querySelector('meta[name="pc-token"]').content;
   const STORE = 'pagecapture.form';
   const STATE_LABEL = { idle: 'parado', opening: 'a abrir', login: 'à espera de login',
-    capturing: 'a capturar', stopping: 'a parar', done: 'concluído', error: 'erro' };
-  const BUSY = new Set(['opening', 'login', 'capturing', 'stopping']);
+    capturing: 'a capturar', review: 'captura terminada', stopping: 'a parar', done: 'concluído', error: 'erro' };
+  const BUSY = new Set(['opening', 'login', 'capturing', 'review', 'stopping']);
   const $ = id => document.getElementById(id);
   const form = $('form');
-  let lastSeq = 0, shownRun = null, shownRows = -1, currentRun = null, userPicked = false;
+  let lastSeq = 0, shownRun = null, shownVersion = -1, shownSig = [], currentRun = null, userPicked = false;
   let audio = null, assistOn = false;
   const TITLE = document.title;
 
@@ -231,7 +232,7 @@
   });
   $('btn-begin').addEventListener('click', () => act('/api/begin'));
   $('btn-stop').addEventListener('click', () => act('/api/stop'));
-  $('run').addEventListener('change', () => { userPicked = true; loadRun($('run').value, true); });
+  $('run').addEventListener('change', () => { userPicked = true; loadRun($('run').value); });
 
   // --- estado -------------------------------------------------------------------------------
   function applyStatus(s, fromPoll) {
@@ -242,6 +243,7 @@
     $('btn-start').disabled = BUSY.has(s.state);
     $('btn-begin').disabled = s.state !== 'login';
     $('btn-stop').disabled = !BUSY.has(s.state) || s.state === 'stopping';
+    $('btn-stop').textContent = s.state === 'review' ? 'Fechar browser' : 'Parar';
     const assist = !!s.assist;
     $('assist').textContent = s.assist === 'interact'
       ? 'Ação necessária: o SEGUINTE está desativado. Se o slide pedir uma interação (ex. «clique na peça»), '
@@ -273,26 +275,32 @@
     const target = (!userPicked && s.run) ? s.run : ($('run').value || null);
     if (target) {
       $('run').value = target;
-      if (target !== shownRun || (target === s.run && s.count !== shownRows)) loadRun(target, false);
+      if (target !== shownRun || (target === s.run && s.version !== shownVersion)) {
+        shownVersion = target === s.run ? s.version : -1;
+        loadRun(target);
+      }
     }
   }
 
-  async function loadRun(run, force) {
+  async function loadRun(run) {
     try {
       const res = await fetch('/api/runs/' + encodeURIComponent(run));
       if (!res.ok) return;
       const data = await res.json();
-      if (!force && run === shownRun && data.rows.length === shownRows) return;
       renderGrid(run, data.rows);
     } catch (e) { /* tenta de novo no próximo ciclo */ }
   }
 
   function renderGrid(run, rows) {
     const grid = $('grid');
-    const known = run === shownRun ? grid.children.length : 0;
-    if (run !== shownRun) grid.replaceChildren();
+    // só acrescenta se as capturas já mostradas não mudaram; senão (slide limpo) reconstrói
+    const sig = rows.map(r => r.file + '|' + r.timestamp_utc);
+    const same = run === shownRun && shownSig.every((x, i) => sig[i] === x);
+    const known = same ? shownSig.length : 0;
+    if (!same) grid.replaceChildren();
     for (const row of rows.slice(known)) {
-      const href = '/files/' + encodeURIComponent(run) + '/' + encodeURIComponent(row.file);
+      const href = '/files/' + encodeURIComponent(run) + '/' + encodeURIComponent(row.file)
+        + '?v=' + encodeURIComponent(row.timestamp_utc);
       const card = document.createElement('div'); card.className = 'card';
       const a = document.createElement('a'); a.href = href; a.target = '_blank'; a.rel = 'noopener';
       const img = document.createElement('img'); img.loading = 'lazy'; img.src = href;
@@ -307,7 +315,7 @@
       c.title = row.control || ''; meta.appendChild(c);
       card.appendChild(meta); grid.appendChild(card);
     }
-    shownRun = run; shownRows = rows.length;
+    shownRun = run; shownSig = sig;
     $('grid-empty').hidden = rows.length > 0;
     $('csv').href = '/files/' + encodeURIComponent(run) + '/index.csv';
   }

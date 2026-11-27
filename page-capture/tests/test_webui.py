@@ -81,8 +81,11 @@ def test_full_flow(ui, course_server):
     wait_for({"login"})
     assert request(ui, "POST", "/api/start", body={"url": course_server})[0] == 409
     assert request(ui, "POST", "/api/begin", body={})[0] == 200
-    s = wait_for({"done", "error"})
-    assert s["state"] == "done", s["message"]
+    s = wait_for({"review", "error"})  # captura terminada; browser aberto para sair da lição
+    assert s["state"] == "review", s["message"]
+    assert "saia da lição" in s["message"]
+    assert request(ui, "POST", "/api/stop", body={})[0] == 200  # «Fechar browser»
+    assert wait_for({"done"})["state"] == "done"
     assert s["count"] == 6 and s["runs"] == [s["run"]]
     assert any(seen_assist) and not s["assist"]  # último slide sem «avançar» -> modo assistido
 

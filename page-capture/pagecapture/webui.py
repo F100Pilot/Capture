@@ -27,6 +27,7 @@ from .runner import (
     Recorder,
     Runner,
     RunOptions,
+    close_gracefully,
     launch_context,
 )
 from .validators import fraction_arg, int_min1, positive_float, url_arg, viewport_arg
@@ -38,9 +39,9 @@ LOG_LINES = 1000
 MAX_BODY = 64 * 1024
 UI_FILE = Path(__file__).with_name("ui.html")
 RUN_RE = re.compile(r"^\d{4}-\d{2}-\d{2}_\d{6}(?:_\d+)?$")
-FILE_RE = re.compile(r"^(?:\d{4}\.png|index\.csv)$")
+FILE_RE = re.compile(r"^(?:\d{4}(?:-\d{1,4})?\.png|index\.csv)$")
 CHANNELS = {"": None, "msedge": "msedge", "chrome": "chrome"}
-BUSY_STATES = {"opening", "login", "capturing", "stopping"}
+BUSY_STATES = {"opening", "login", "capturing", "review", "stopping"}
 
 
 class BusyError(RuntimeError):
@@ -54,6 +55,7 @@ class SessionParams:
     viewport: dict[str, int]
     sandbox: bool
     verbose: bool
+    keep_last: bool
     opts: RunOptions
 
 
@@ -86,6 +88,7 @@ def parse_params(data: dict) -> SessionParams:
             viewport=viewport_arg(field("viewport", "1366x768")),
             sandbox=not bool(data.get("no_sandbox")),
             verbose=bool(data.get("verbose")),
+            keep_last=bool(data.get("keep_last", True)),
             opts=opts,
         )
     except ValueError:
@@ -139,6 +142,7 @@ class Controller:
         self._runner: Runner | None = None
         self._begin = threading.Event()
         self._stop = threading.Event()
+        self._close = threading.Event()  # fechar o browser depois da captura
         self._thread: threading.Thread | None = None
 
     # --- estado ------------------------------------------------------------------------------
@@ -156,6 +160,7 @@ class Controller:
                 "message": self._message,
                 "run": self._run_dir.name if self._run_dir else None,
                 "count": rec.count if rec else 0,
+                "version": rec.version if rec else 0,
                 "assist": runner.assist if runner and self._state == "capturing" else None,
                 "logs": lines,
                 "last_seq": last,
@@ -194,6 +199,7 @@ class Controller:
             self._runner = None
             self._begin.clear()
             self._stop.clear()
+            self._close.clear()
             log.setLevel(logging.DEBUG if params.verbose else logging.INFO)
             self._thread = threading.Thread(target=self._work, args=(params,),
                                             name="pagecapture-browser", daemon=True)
@@ -206,14 +212,18 @@ class Controller:
         self._begin.set()
 
     def stop(self) -> None:
+        """Parar a captura; depois da captura («review»), fechar o browser."""
         with self._lock:
             if self._state not in BUSY_STATES:
                 return
-            self._state, self._message = "stopping", "A parar…"
-        self._stop.set()
+            closing = self._state == "review"
+            self._state, self._message = "stopping", ("A fechar o browser…" if closing
+                                                       else "A parar…")
+        (self._close if closing else self._stop).set()
 
     def shutdown(self, timeout: float = 20) -> None:
         self._stop.set()
+        self._close.set()
         thread = self._thread
         if thread and thread.is_alive():
             thread.join(timeout)
@@ -237,10 +247,9 @@ class Controller:
                 try:
                     self._session(context, p)
                 finally:
-                    try:
-                        context.close()
-                    except Exception as e:
-                        log.debug("Erro ao fechar o browser: %s", e)
+                    close_gracefully(context)
+                    if self._state == "stopping":
+                        self._set("done", "Browser fechado.")
         except Exception as e:  # nunca deixar a thread morrer em silêncio
             log.exception("Erro inesperado")
             self._set("error", f"Erro: {str(e).splitlines()[0] if str(e) else type(e).__name__}")
@@ -265,13 +274,10 @@ class Controller:
                 log.warning("O browser foi fechado antes de começar.")
                 self._set("done", "O browser foi fechado.")
                 return
-            try:  # espera curta que também processa os eventos do browser (popups, fecho)
-                open_pages[-1].wait_for_timeout(300)
-            except PlaywrightError as e:
-                log.debug("Espera interrompida: %s", e)
+            self._pump(open_pages[-1])
 
         self._set("capturing", "A capturar… Não feche o browser.")
-        with Recorder(self.out) as rec:
+        with Recorder(self.out, keep_last_only=p.keep_last) as rec:
             with self._lock:
                 self._recorder, self._run_dir = rec, rec.dir
             log.info("A gravar em %s", rec.dir)
@@ -288,7 +294,29 @@ class Controller:
                 return
             finally:
                 log.info("Gravadas %d páginas em %s", rec.count, rec.dir)
-        self._set("done", f"Concluído: {rec.count} páginas em {rec.dir.name}.")
+        self._review(context, f"Captura terminada: {rec.count} páginas em {rec.dir.name}.")
+
+    @staticmethod
+    def _pump(page) -> None:
+        """Espera curta que também processa os eventos do browser (popups, fecho)."""
+        try:
+            page.wait_for_timeout(300)
+        except PlaywrightError as e:
+            log.debug("Espera interrompida: %s", e)
+
+    def _review(self, context, summary: str) -> None:
+        """Deixa o browser aberto para o utilizador sair da lição (o LMS regista a conclusão)."""
+        self._set("review", f"{summary} Para o LMS registar a conclusão, saia da lição pelo "
+                            "botão do conteúdo ou do LMS (ex. «Sair») e depois carregue em "
+                            "«Fechar browser».")
+        log.info("Captura terminada. Saia da lição no browser e depois carregue em "
+                 "«Fechar browser».")
+        while not self._close.is_set():
+            open_pages = [pg for pg in context.pages if not pg.is_closed()]
+            if not open_pages:
+                self._set("done", f"{summary} Browser fechado.")
+                return
+            self._pump(open_pages[-1])
 
 
 class Handler(BaseHTTPRequestHandler):

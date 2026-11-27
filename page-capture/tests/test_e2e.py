@@ -1,12 +1,19 @@
 import csv
 import logging
 import os
+import time
 
 import pytest
 from PIL import Image
 from playwright.sync_api import sync_playwright
 
-from pagecapture.runner import MAX_CONSECUTIVE_DUPLICATES, Recorder, Runner, RunOptions
+from pagecapture.runner import (
+    MAX_CONSECUTIVE_DUPLICATES,
+    Recorder,
+    Runner,
+    RunOptions,
+    close_gracefully,
+)
 
 
 @pytest.mark.e2e
@@ -181,3 +188,47 @@ def test_interactive_slide_alerts_user_and_continues(course_server, tmp_path, ca
     # detetada logo (antes dos 60 s de ready_alert) e descrita no alerta
     assert "parece pedir uma interação" in caplog.text and 'div "b)" #piece' in caplog.text
     assert ".component_base.std.outline" not in caplog.text.split("parece pedir")[1]  # leitor
+
+
+@pytest.mark.e2e
+def test_keep_last_only_on_progressive_slide(course_server, tmp_path):
+    exe = os.environ.get("PC_BROWSER_EXECUTABLE") or None
+    with sync_playwright() as pw:
+        context = pw.chromium.launch_persistent_context(
+            str(tmp_path / "profile"), headless=True, executable_path=exe,
+            viewport={"width": 1366, "height": 768},
+        )
+        try:
+            page = context.pages[0] if context.pages else context.new_page()
+            page.goto(course_server.replace("index.html", "timeline.html"))
+            opts = RunOptions(max_pages=5, change_timeout=5, manual_timeout=2)
+            with Recorder(tmp_path / "out", keep_last_only=True) as rec:
+                Runner(context, rec, opts).run()
+                run_dir = rec.dir
+        finally:
+            context.close()
+
+    assert sorted(p.name for p in run_dir.glob("*.png")) == ["0001.png", "0002.png"]
+    first = Image.open(run_dir / "0001.png").convert("RGB")
+    # o slide 1 ficou só com o estado final: os dois blocos que foram aparecendo
+    assert first.getpixel((250, 400)) == (250, 230, 90)
+    assert first.getpixel((850, 400)) == (20, 160, 60)
+
+
+@pytest.mark.e2e
+def test_close_gracefully_lets_lesson_report_exit(course_server, tmp_path, beacons):
+    exe = os.environ.get("PC_BROWSER_EXECUTABLE") or None
+    with sync_playwright() as pw:
+        context = pw.chromium.launch_persistent_context(
+            str(tmp_path / "profile"), headless=True, executable_path=exe,
+            viewport={"width": 1366, "height": 768},
+        )
+        page = context.pages[0] if context.pages else context.new_page()
+        page.goto(course_server.replace("index.html", "exit.html"))
+        page.click("h1")  # beforeunload só pede confirmação depois de interação do utilizador
+        close_gracefully(context)
+    for _ in range(20):  # o aviso chega ao servidor de forma assíncrona
+        if "/lms/exit" in beacons:
+            break
+        time.sleep(0.1)
+    assert "/lms/exit" in beacons  # a lição conseguiu avisar o LMS da saída

@@ -17,6 +17,7 @@ from pagecapture.runner import (
     Recorder,
     Runner,
     RunOptions,
+    close_gracefully,
     launch_context,
 )
 from pagecapture.validators import (
@@ -55,6 +56,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="segundos à espera de avanço manual antes de terminar")
     p.add_argument("--ready-alert", type=positive_float, default=60.0,
                    help="segundos com o SEGUINTE desativado (sem zonas clicáveis) até alertar")
+    p.add_argument("--keep-last", action="store_true",
+                   help="um ficheiro por slide: só o último estado (apaga os intermédios)")
     p.add_argument("--full-page", action="store_true", help="screenshot da página inteira")
     p.add_argument("--headless", action="store_true", help="sem janela (impede login manual)")
     p.add_argument("--no-sandbox", action="store_true",
@@ -83,7 +86,7 @@ def _session(context, args: argparse.Namespace) -> int:
         manual_timeout=args.manual_timeout, full_page=args.full_page,
         ready_alert=args.ready_alert,
     )
-    with Recorder(args.out) as recorder:
+    with Recorder(args.out, keep_last_only=args.keep_last) as recorder:
         log.info("A gravar em %s (Ctrl+C para parar)", recorder.dir)
         try:
             Runner(context, recorder, opts).run()
@@ -91,6 +94,9 @@ def _session(context, args: argparse.Namespace) -> int:
             log.warning("O browser foi fechado; a terminar.")
         finally:
             log.info("Gravadas %d páginas em %s", recorder.count, recorder.dir)
+    if not args.no_prompt and any(not pg.is_closed() for pg in context.pages):
+        input("\nPara o LMS registar a conclusão, saia da lição pelo botão do conteúdo ou do "
+              "LMS (ex. «Sair»). Depois carregue ENTER aqui para fechar o browser... ")
     return EXIT_OK
 
 
@@ -121,10 +127,7 @@ def main(argv: list[str] | None = None) -> int:
                 log.error("%s", e)
                 return EXIT_ERROR
             finally:
-                try:
-                    context.close()
-                except Exception as e:  # o browser pode já ter morrido (Ctrl+C)
-                    log.debug("Erro ao fechar o browser: %s", e)
+                close_gracefully(context)
     except KeyboardInterrupt:
         # o Ctrl+C também mata o driver do Playwright; silencia o ruído do asyncio ao sair
         logging.getLogger("asyncio").setLevel(logging.CRITICAL)

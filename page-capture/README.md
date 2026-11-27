@@ -28,9 +28,13 @@ Abre `http://127.0.0.1:8765/` no browser predefinido:
 
 1. Preencha o URL (e o browser: Edge por omissão) e carregue em **1. Abrir browser**.
 2. Faça login na janela que abriu e navegue até à primeira página a capturar.
-3. Carregue em **2. Login feito — começar captura**. **Parar** termina em segurança.
+3. Carregue em **2. Login feito — começar captura**. **Parar** termina a captura em segurança.
 4. O registo e a galeria das capturas atualizam-se sozinhos; capturas anteriores ficam na lista.
-5. Quando for preciso agir (modo assistido: ex. «Clique na peça b)» com o SEGUINTE bloqueado), a
+5. No fim da captura o browser fica aberto: **saia da lição pelo botão do conteúdo ou do LMS**
+   (ex. «Sair»), para o LMS registar o progresso/conclusão, e depois carregue em
+   **Fechar browser**. O fecho também é feito de forma normal (corre a saída da lição e aceita o
+   aviso «Tem a certeza que quer sair?»), nunca de forma abrupta.
+6. Quando for preciso agir (modo assistido: ex. «Clique na peça b)» com o SEGUINTE bloqueado), a
    interface toca um alerta, mostra uma faixa amarela e o separador passa a «⚠ Ação necessária».
    Faça a interação na janela do browser da captura; o estado intermédio é gravado e o automático
    retoma.
@@ -73,6 +77,7 @@ Páginas repetidas (quase iguais a uma já gravada) nunca são gravadas; 5 repet
 | `--change-threshold` | `0.003` | fração mínima de píxeis alterados |
 | `--change-timeout` | `15` | segundos à espera de mudança após clique |
 | `--manual-timeout` | `300` | segundos à espera em modo assistido |
+| `--keep-last` | — | um ficheiro por slide: só o estado final (na interface: ligado por omissão) |
 | `--ready-alert` | `60` | segundos com o SEGUINTE desativado (sem zonas clicáveis) até alertar |
 | `--full-page` | — | só na linha de comandos: grava a página inteira (só 1 captura por página gravada; não usar em Storyline, que se reajusta a cada redimensionamento) |
 | `--headless` | — | sem janela (não permite login manual) |
@@ -102,6 +107,11 @@ espera que fique ativo (até 10 min) e grava cada informação nova que for apar
 - se não tiver (ex. narração), espera em silêncio e só alerta ao fim de `--ready-alert` s (60).
 
 A ferramenta nunca clica nessas zonas sozinha.
+
+Com «Só o estado final de cada slide» (`--keep-last`), os estados intermédios do slide ficam como
+`NNNN-2.png`, `NNNN-3.png`… e, quando chega o slide seguinte (ou no fim), fica só o último como
+`NNNN.png`. Atenção: se um slide **substitui** conteúdo (em vez de acrescentar), os estados
+intermédios perdem-se; nesse caso desligue a opção.
 
 ### Afinação
 

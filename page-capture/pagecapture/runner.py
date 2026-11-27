@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import csv
 import logging
+import os
 import threading
 import time
 from dataclasses import dataclass
@@ -206,26 +207,97 @@ def _new_run_dir(base: Path) -> Path:
     raise RuntimeError(f"Não foi possível criar uma pasta nova em {base}")
 
 
-class Recorder:
-    """Grava NNNN.png sequenciais e index.csv (flush linha a linha). Nunca sobrescreve."""
+def close_gracefully(context: BrowserContext, timeout_ms: int = 5000) -> None:
+    """Fecha as janelas como o utilizador faria (corre beforeunload/unload), depois o browser.
 
-    def __init__(self, base_dir: Path):
+    Conteúdos SCORM/AICC costumam enviar o progresso/conclusão ao LMS ao sair da lição.
+    """
+    def on_dialog(dialog) -> None:
+        try:  # «Tem a certeza que quer sair?» -> sair; outros diálogos -> fechar
+            dialog.accept() if dialog.type == "beforeunload" else dialog.dismiss()
+        except PlaywrightError:
+            pass
+
+    for page in reversed(list(context.pages)):  # popups (lição) primeiro, depois o LMS
+        if page.is_closed():
+            continue
+        try:
+            page.on("dialog", on_dialog)
+            page.close(run_before_unload=True)
+            page.wait_for_event("close", timeout=timeout_ms)
+        except PlaywrightError as e:
+            log.debug("Fecho normal da janela falhou: %s", str(e).splitlines()[0])
+    try:
+        context.close()
+    except Exception as e:  # o browser pode já ter morrido (Ctrl+C)
+        log.debug("Erro ao fechar o browser: %s", e)
+
+
+class Recorder:
+    """Grava as páginas (PNG) e o index.csv. Nunca sobrescreve capturas de outras execuções.
+
+    keep_last_only=False: NNNN.png sequencial por captura.
+    keep_last_only=True: um ficheiro por slide. As capturas «update» do slide atual ficam como
+    NNNN-2.png, NNNN-3.png…; quando chega o slide seguinte (ou no fim) fica só o último estado
+    como NNNN.png e os intermédios são apagados.
+    O index.csv é reescrito (atomicamente) a cada gravação.
+    """
+
+    NEW_SLIDE_TRIGGERS = ("start", "click", "manual")
+
+    def __init__(self, base_dir: Path, keep_last_only: bool = False):
         self.dir = _new_run_dir(Path(base_dir))
-        self._file = open(self.dir / "index.csv", "x", newline="", encoding="utf-8")
-        self._writer = csv.writer(self._file)
-        self._writer.writerow(CSV_FIELDS)
-        self._file.flush()
-        self._thumbs: list[Image.Image] = []
+        self.keep_last_only = keep_last_only
+        self._rows: list[dict] = []  # n, file, ts, url, trigger, control, frac, thumb
+        self._group: list[dict] = []  # capturas do slide atual (keep_last_only)
+        self._slide = 0
+        self.version = 0  # muda a cada alteração (a interface usa-o para refrescar a galeria)
+        self._write_csv()
 
     @property
     def count(self) -> int:
-        return len(self._thumbs)
+        return len(self._rows)
 
     def _find_duplicate(self, thumb: Image.Image) -> int | None:
-        for i in range(len(self._thumbs) - 1, -1, -1):
-            if changed_fraction(self._thumbs[i], thumb) < DUPLICATE_DIFF:
-                return i + 1
+        for row in reversed(self._rows):
+            if changed_fraction(row["thumb"], thumb) < DUPLICATE_DIFF:
+                return row["n"]
         return None
+
+    def _write_csv(self) -> None:
+        self.version += 1
+        tmp = self.dir / "index.csv.tmp"
+        try:
+            with open(tmp, "w", newline="", encoding="utf-8") as fh:
+                writer = csv.writer(fh)
+                writer.writerow(CSV_FIELDS)
+                for r in self._rows:
+                    writer.writerow([r["n"], r["file"], r["ts"], r["url"], r["trigger"],
+                                     r["control"], r["frac"]])
+            os.replace(tmp, self.dir / "index.csv")
+        except OSError as e:  # ex. index.csv aberto no Excel; tenta de novo na próxima
+            log.warning("Não foi possível atualizar o index.csv (%s); tento de novo.", e)
+
+    def _finalize_slide(self) -> None:
+        """Slide terminado: fica só o último estado, como NNNN.png."""
+        if not self.keep_last_only or len(self._group) < 2:
+            self._group = []
+            return
+        first, last = self._group[0], self._group[-1]
+        final_name = f"{self._slide:04d}.png"
+        try:
+            for row in self._group[:-1]:
+                (self.dir / row["file"]).unlink(missing_ok=True)
+                self._rows.remove(row)
+            os.replace(self.dir / last["file"], self.dir / final_name)
+            last["file"] = final_name
+            last["trigger"], last["control"] = first["trigger"], first["control"]
+            log.info("Slide %d: mantido só o estado final (%d capturas intermédias apagadas).",
+                     self._slide, len(self._group) - 1)
+        except OSError as e:
+            log.warning("Limpeza do slide %d incompleta (%s); ficam os ficheiros que restam.",
+                        self._slide, e)
+        self._group = []
 
     def save(self, png: bytes, thumb: Image.Image, url: str, trigger: str, control: str,
              fraction: float | None) -> int | None:
@@ -234,23 +306,32 @@ class Recorder:
         if dup:
             log.warning("Página repetida (igual à página %d): não gravada.", dup)
             return None
-        n = self.count + 1
-        name = f"{n:04d}.png"
+        if trigger in self.NEW_SLIDE_TRIGGERS or self._slide == 0:
+            self._finalize_slide()
+            self._slide += 1
+        if self.keep_last_only:
+            n = self._slide
+            k = len(self._group) + 1
+            name = f"{n:04d}.png" if k == 1 else f"{n:04d}-{k}.png"
+        else:
+            n = self.count + 1
+            name = f"{n:04d}.png"
         with open(self.dir / name, "xb") as fh:
             fh.write(png)
-        self._writer.writerow([
-            n, name, datetime.now(timezone.utc).isoformat(timespec="seconds"), url, trigger,
-            control, "" if fraction is None else f"{fraction:.4f}",
-        ])
-        self._file.flush()
-        self._thumbs.append(thumb)
+        row = {"n": n, "file": name, "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+               "url": url, "trigger": trigger, "control": control,
+               "frac": "" if fraction is None else f"{fraction:.4f}", "thumb": thumb}
+        self._rows.append(row)
+        if self.keep_last_only:
+            self._group.append(row)
+        self._write_csv()
         frac_txt = "" if fraction is None else f" (mudança {fraction:.2%})"
-        log.info("Página %d gravada [%s]%s", n, trigger, frac_txt)
+        log.info("Página %s gravada [%s]%s", name[:-4], trigger, frac_txt)
         return n
 
     def close(self) -> None:
-        if not self._file.closed:
-            self._file.close()
+        self._finalize_slide()
+        self._write_csv()
 
     def __enter__(self) -> Recorder:
         return self

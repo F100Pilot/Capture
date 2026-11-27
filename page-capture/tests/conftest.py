@@ -9,8 +9,15 @@ FIXTURES = Path(__file__).parent / "fixtures" / "course"
 
 
 class QuietHandler(SimpleHTTPRequestHandler):
+    beacons: list[str] = []  # POSTs recebidos (ex. navigator.sendBeacon ao sair da lição)
+
     def log_message(self, *args):
         pass
+
+    def do_POST(self):
+        QuietHandler.beacons.append(self.path)
+        self.send_response(204)
+        self.end_headers()
 
 
 @pytest.fixture
@@ -21,3 +28,10 @@ def course_server():
     yield f"http://127.0.0.1:{httpd.server_address[1]}/index.html"
     httpd.shutdown()
     httpd.server_close()
+
+
+@pytest.fixture
+def beacons():
+    """POSTs recebidos pelo course_server (mesma instância do handler)."""
+    QuietHandler.beacons.clear()
+    return QuietHandler.beacons
