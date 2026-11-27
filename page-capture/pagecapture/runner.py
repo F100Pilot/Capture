@@ -6,6 +6,8 @@ import base64
 import csv
 import logging
 import os
+import shutil
+import tempfile
 import threading
 import time
 from dataclasses import dataclass
@@ -173,20 +175,38 @@ class StopRequested(Exception):
 def launch_context(pw: Playwright, *, viewport: dict[str, int] | None,
                    headless: bool = False, channel: str | None = None, sandbox: bool = True,
                    executable_path: str | None = None) -> BrowserContext:
-    """Browser em modo privado (incógnito): contexto novo e isolado, sem perfil em disco.
+    """Browser «incógnito»: perfil temporário vazio, apagado em close_gracefully.
 
-    Nada fica guardado (cookies, histórico, sessão); cada execução começa com login.
+    Nada passa de uma execução para a seguinte (cookies, sessão, histórico); cada execução
+    começa com login. Usa-se um perfil temporário em vez do contexto privado do Chromium
+    porque este altera regras do browser (ex. o site poder fechar a janela inicial) e pode
+    estar restringido por políticas da empresa (InPrivate).
     viewport=None: sem emulação de tamanho; a página usa o tamanho real da janela.
     """
-    browser = pw.chromium.launch(
-        headless=headless, channel=channel, chromium_sandbox=sandbox,
-        executable_path=executable_path,
-    )
+    profile = Path(tempfile.mkdtemp(prefix="pagecapture-"))
     try:
-        return browser.new_context(viewport=viewport, no_viewport=viewport is None)
+        context = pw.chromium.launch_persistent_context(
+            str(profile), headless=headless, channel=channel, viewport=viewport,
+            no_viewport=viewport is None, chromium_sandbox=sandbox,
+            executable_path=executable_path,
+        )
     except PlaywrightError:
-        browser.close()
+        _remove_profile(profile)
         raise
+    _TEMP_PROFILES[id(context)] = profile
+    return context
+
+
+_TEMP_PROFILES: dict[int, Path] = {}
+
+
+def _remove_profile(profile: Path) -> None:
+    for _ in range(10):  # no Windows o browser pode demorar a libertar os ficheiros
+        shutil.rmtree(profile, ignore_errors=True)
+        if not profile.exists():
+            return
+        time.sleep(0.5)
+    log.warning("Não foi possível apagar o perfil temporário %s; apague-o à mão.", profile)
 
 
 @dataclass(frozen=True)
@@ -233,13 +253,31 @@ def close_gracefully(context: BrowserContext, timeout_ms: int = 5000) -> None:
             page.wait_for_event("close", timeout=timeout_ms)
         except PlaywrightError as e:
             log.debug("Fecho normal da janela falhou: %s", str(e).splitlines()[0])
-    browser = context.browser
     try:
-        context.close()  # contexto privado: descarta cookies/sessão
-        if browser is not None:
-            browser.close()
+        context.close()
     except Exception as e:  # o browser pode já ter morrido (Ctrl+C)
         log.debug("Erro ao fechar o browser: %s", e)
+    profile = _TEMP_PROFILES.pop(id(context), None)
+    if profile is not None:  # «incógnito»: nada fica guardado
+        _remove_profile(profile)
+
+
+NEW_WINDOW_GRACE_MS = 3000  # janela fechada pelo site: tempo à espera da janela seguinte
+
+
+def wait_for_new_page(context: BrowserContext, timeout_ms: int = NEW_WINDOW_GRACE_MS
+                      ) -> Page | None:
+    """Sem janelas abertas: espera por uma nova (ex. login que fecha a sua janela e abre o LMS).
+
+    Também processa os eventos do browser. Devolve a janela nova ou None.
+    """
+    for page in reversed(context.pages):
+        if not page.is_closed():
+            return page
+    try:
+        return context.wait_for_event("page", timeout=timeout_ms)
+    except PlaywrightError:
+        return None
 
 
 TRASH_DIR = "apagadas"
@@ -416,10 +454,10 @@ class Runner:
     # --- browser -----------------------------------------------------------------------------
     def current_page(self) -> Page:
         """Janela mais recente ainda aberta (segue popups do LMS)."""
-        for page in reversed(self.context.pages):
-            if not page.is_closed():
-                return page
-        raise BrowserClosedError("Não há janelas abertas.")
+        page = wait_for_new_page(self.context)
+        if page is None:
+            raise BrowserClosedError("Não há janelas abertas.")
+        return page
 
     def _capture(self, page: Page) -> bytes:
         """Screenshot da área visível sem mexer no tamanho da página.

@@ -6,8 +6,8 @@ visual de cada página: abre o conteúdo no browser, captura cada página nova e
 
 ## Decisões
 - Script local Python + Playwright (não extensão, não serviço).
-- Login manual; credenciais nunca guardadas; browser sempre em modo privado (contexto isolado,
-  nada persiste em disco) — decisão do utilizador (substitui o perfil local persistente).
+- Login manual; credenciais nunca guardadas; browser sempre «incógnito» (perfil temporário
+  vazio, apagado ao fechar; nada persiste) — decisão do utilizador (substitui o perfil local persistente).
 - Controlo de avançar: heurística + override `--next-selector` + modo assistido.
 
 ## Requisitos funcionais (critérios de aceitação)

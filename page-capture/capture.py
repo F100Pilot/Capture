@@ -19,6 +19,7 @@ from pagecapture.runner import (
     RunOptions,
     close_gracefully,
     launch_context,
+    wait_for_new_page,
 )
 from pagecapture.validators import (
     fraction_arg,
@@ -78,6 +79,13 @@ def _session(context, args: argparse.Namespace) -> int:
     if not args.no_prompt:
         input("\nFaça login e abra a primeira página a capturar. Depois carregue ENTER aqui... ")
 
+    if wait_for_new_page(context) is None:  # o site fechou a janela (ex. após o login)
+        log.warning("A janela fechou-se; abro de novo o URL inicial (a sessão mantém-se).")
+        page = context.new_page()
+        try:
+            page.goto(args.url, wait_until="load", timeout=GOTO_TIMEOUT_MS)
+        except PlaywrightError as e:
+            log.warning("Não foi possível abrir %s: %s", args.url, str(e).splitlines()[0])
     opts = RunOptions(
         next_selector=args.next_selector, max_pages=args.max_pages,
         change_threshold=args.change_threshold, change_timeout=args.change_timeout,

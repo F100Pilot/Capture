@@ -30,12 +30,14 @@ from .runner import (
     close_gracefully,
     delete_captures,
     launch_context,
+    wait_for_new_page,
 )
 from .validators import fraction_arg, int_min1, positive_float, url_arg, viewport_arg
 
 log = logging.getLogger("pagecapture")
 
 GOTO_TIMEOUT_MS = 60000
+MAX_REOPEN = 3  # reaberturas do URL inicial se o site fechar a janela antes de começar
 LOG_LINES = 1000
 MAX_BODY = 64 * 1024
 UI_FILE = Path(__file__).with_name("ui.html")
@@ -278,17 +280,30 @@ class Controller:
         self._set("login", "Faça login no browser que abriu, abra a primeira página a capturar "
                            "e carregue em «Começar captura».")
         log.info("Browser aberto. À espera de «Começar captura».")
+        reopened = 0
         while not self._begin.is_set():
             if self._stop.is_set():
                 log.info("Cancelado antes de começar.")
                 self._set("done", "Cancelado.")
                 return
-            open_pages = [pg for pg in context.pages if not pg.is_closed()]
-            if not open_pages:
-                log.warning("O browser foi fechado antes de começar.")
-                self._set("done", "O browser foi fechado.")
-                return
-            self._pump(open_pages[-1])
+            page = wait_for_new_page(context)
+            if page is None:
+                # no modo privado o site pode fechar a janela inicial (ex. após o login)
+                reopened += 1
+                if reopened > MAX_REOPEN:
+                    log.warning("O browser foi fechado antes de começar.")
+                    self._set("done", "O browser foi fechado.")
+                    return
+                log.warning("A janela fechou-se (habitual após o login em modo privado). "
+                            "Abro de novo o URL inicial; a sessão mantém-se.")
+                page = context.new_page()
+                try:
+                    page.goto(p.url, wait_until="load", timeout=GOTO_TIMEOUT_MS)
+                except PlaywrightError as e:
+                    log.warning("Não foi possível abrir o URL (%s); navegue manualmente.",
+                                str(e).splitlines()[0])
+                continue
+            self._pump(page)
 
         self._set("capturing", "A capturar… Não feche o browser.")
         with Recorder(self.out, keep_last_only=p.keep_last) as rec:
@@ -326,11 +341,11 @@ class Controller:
         log.info("Captura terminada. Saia da lição no browser e depois carregue em "
                  "«Fechar browser».")
         while not self._close.is_set():
-            open_pages = [pg for pg in context.pages if not pg.is_closed()]
-            if not open_pages:
+            page = wait_for_new_page(context)
+            if page is None:
                 self._set("done", f"{summary} Browser fechado.")
                 return
-            self._pump(open_pages[-1])
+            self._pump(page)
 
 
 class Handler(BaseHTTPRequestHandler):

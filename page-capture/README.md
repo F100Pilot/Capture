@@ -49,8 +49,8 @@ no mesmo browser). Para sair: Ctrl+C na janela da consola.
 python capture.py https://lms.exemplo.pt/curso --max-pages 10 -v
 ```
 
-1. O browser abre no URL em modo privado (incógnito). Faça login manualmente (as credenciais e a
-   sessão nunca são guardadas; nada fica em disco ao fechar).
+1. O browser abre no URL com um perfil temporário (incógnito). Faça login manualmente (as
+   credenciais e a sessão nunca são guardadas; o perfil é apagado ao fechar).
 2. Abra a primeira página a capturar e carregue ENTER na consola.
 3. A ferramenta captura, clica em "avançar", espera que a página mude e estabilize, e repete.
 4. Se não encontrar o controlo (ou 2 cliques seguidos não mudarem nada) entra em **modo assistido**:
@@ -138,8 +138,9 @@ instalado com `python -m playwright install chromium`).
 ## Segurança e âmbito
 
 - Usar um utilizador de teste, não uma conta de formando real.
-- O browser abre sempre em modo privado (incógnito): nada fica guardado (cookies, sessão,
-  histórico); é preciso fazer login em cada execução.
+- O browser abre sempre «incógnito»: cada execução usa um perfil temporário vazio, apagado ao
+  fechar; nada fica guardado (cookies, sessão, histórico) e é preciso fazer login em cada execução.
+  (Não se usa o InPrivate do Edge: muda regras do browser e pode estar restringido pela empresa.)
 - Nunca versionar `capturas/` (conteúdo possivelmente proprietário).
 - Atenção: a heurística não clica em "Enviar/Submit" de propósito, mas um layout atípico pode levar a
   um clique errado que fica registado no LMS.

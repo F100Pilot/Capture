@@ -257,3 +257,24 @@ def test_browser_is_private_nothing_persists(course_server):
         assert page.evaluate("() => document.cookie") == ""  # nem cookies persistentes
         assert page.evaluate("() => localStorage.getItem('x')") is None
         close_gracefully(ctx)
+
+
+@pytest.mark.e2e
+def test_follows_new_window_when_site_closes_current(course_server):
+    from pagecapture.runner import launch_context, wait_for_new_page
+
+    exe = os.environ.get("PC_BROWSER_EXECUTABLE") or None
+    with sync_playwright() as pw:
+        ctx = launch_context(pw, viewport={"width": 800, "height": 600}, headless=True,
+                             sandbox=False, executable_path=exe)
+        try:
+            login = ctx.pages[0] if ctx.pages else ctx.new_page()
+            login.goto(course_server.replace("index.html", "loop.html"))
+            # como um login SSO: abre o LMS numa janela nova e a janela de login fecha-se
+            login.evaluate("() => { window.open(location.href, 'lms'); }")
+            login.close()
+            new = wait_for_new_page(ctx)
+            assert new is not None and not new.is_closed()
+            assert wait_for_new_page(ctx, timeout_ms=500) is new
+        finally:
+            close_gracefully(ctx)
