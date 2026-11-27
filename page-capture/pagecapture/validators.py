@@ -16,10 +16,17 @@ def url_arg(value: str) -> str:
     raise argparse.ArgumentTypeError("URL inválido: use http://, https:// ou file://")
 
 
-def viewport_arg(value: str) -> dict[str, int]:
+WINDOW_VIEWPORT = ("janela", "window", "auto")
+
+
+def viewport_arg(value: str) -> dict[str, int] | None:
+    """LARGURAxALTURA fixo, ou 'janela' (None) para usar o tamanho real da janela do browser."""
+    if value.strip().lower() in WINDOW_VIEWPORT:
+        return None
     m = re.fullmatch(r"(\d{2,5})[xX](\d{2,5})", value.strip())
     if not m:
-        raise argparse.ArgumentTypeError("viewport inválido: use LARGURAxALTURA, ex. 1366x768")
+        raise argparse.ArgumentTypeError(
+            "viewport inválido: use LARGURAxALTURA (ex. 1366x768) ou janela")
     width, height = int(m[1]), int(m[2])
     if not (200 <= width <= 10000 and 200 <= height <= 10000):
         raise argparse.ArgumentTypeError("viewport fora dos limites (200-10000 px)")

@@ -44,7 +44,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--channel", choices=["chrome", "msedge"],
                    help="usar o Chrome/Edge instalado em vez do Chromium do Playwright")
     p.add_argument("--viewport", type=viewport_arg, default=viewport_arg("1366x768"),
-                   help="tamanho da janela, ex. 1366x768")
+                   help="tamanho fixo, ex. 1366x768, ou 'janela' para o tamanho real da janela")
     p.add_argument("--next-selector", help="seletor CSS do botão avançar (substitui a heurística)")
     p.add_argument("--max-pages", type=int_min1, default=1000)
     p.add_argument("--change-threshold", type=fraction_arg, default=0.003,

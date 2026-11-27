@@ -59,7 +59,7 @@ Resultado: `capturas/AAAA-MM-DD_HHMMSS/` com `0001.png`, `0002.png`, … e `inde
 | `--out` | `capturas` | pasta base (uma subpasta nova por execução) |
 | `--profile` | `.browser-profile` | perfil do browser (cookies de sessão) |
 | `--channel chrome\|msedge` | — | usar Chrome/Edge instalado |
-| `--viewport LxA` | `1366x768` | tamanho da janela |
+| `--viewport LxA` | `1366x768` | tamanho fixo da página; `janela` usa o tamanho real da janela (sem emulação) |
 | `--next-selector CSS` | — | seletor do botão avançar (substitui a heurística) |
 | `--max-pages` | `1000` | limite de páginas |
 | `--change-threshold` | `0.003` | fração mínima de píxeis alterados |
@@ -73,6 +73,12 @@ Resultado: `capturas/AAAA-MM-DD_HHMMSS/` com `0001.png`, `0002.png`, … e `inde
 
 Códigos de saída: `0` ok (inclui Ctrl+C), `1` erro de execução, `2` o browser não abre
 (o argparse também usa `2` para argumentos inválidos).
+
+### Navegação limitada (ex. Storyline)
+
+Se o conteúdo mostrar um aviso como «A navegação é limitada» (o slide ainda não terminou), a
+ferramenta fecha o aviso (OK), não o grava, espera 5 s e volta a tentar. Se o bloqueio durar mais do
+que `--manual-timeout`, passa a modo assistido.
 
 ### Afinação
 

@@ -1,3 +1,6 @@
+import re
+
+from pagecapture.runner import BLOCKER_PATTERN
 from pagecapture.scoring import rank, score, tokens
 
 VW, VH = 1000, 600
@@ -57,3 +60,12 @@ def test_rank_picks_next_in_other_frame():
     ranked = rank([top, content])
     assert ranked and ranked[0].frame_index == 1 and ranked[0].idx == 1
     assert '"Next"' in ranked[0].description
+
+
+def test_blocker_pattern():
+    rx = re.compile(BLOCKER_PATTERN, re.I)
+    for text in ("A navegação é limitada.", "Navigation restricted",
+                 "Por favor garanta que leu toda a informação", "You must complete the slide"):
+        assert rx.search(text), text
+    for text in ("Seguinte", "Objetivos do Curso", "Navegação"):
+        assert not rx.search(text), text

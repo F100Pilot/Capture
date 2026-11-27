@@ -38,3 +38,28 @@ def test_course_in_iframe(course_server, tmp_path):
     assert [c["slide"] for c in clicks] == [1, 2, 3, 4, 5]
     labels = " ".join(c["label"] for c in clicks).lower()
     assert "previous" not in labels and "voltar" not in labels and "left" not in labels
+
+
+@pytest.mark.e2e
+def test_restricted_navigation_is_retried(course_server, tmp_path):
+    exe = os.environ.get("PC_BROWSER_EXECUTABLE") or None
+    with sync_playwright() as pw:
+        context = pw.chromium.launch_persistent_context(
+            str(tmp_path / "profile"), headless=True, executable_path=exe,
+            viewport={"width": 1366, "height": 768},
+        )
+        try:
+            page = context.pages[0] if context.pages else context.new_page()
+            page.goto(course_server.replace("index.html", "restricted.html"))
+            opts = RunOptions(max_pages=5, change_timeout=5, manual_timeout=3)
+            with Recorder(tmp_path / "out") as rec:
+                Runner(context, rec, opts).run()
+                run_dir = rec.dir
+            events = page.evaluate("() => window.events")
+        finally:
+            context.close()
+
+    with open(run_dir / "index.csv", encoding="utf-8") as fh:
+        rows = list(csv.DictReader(fh))
+    assert [r["trigger"] for r in rows] == ["start", "click"]  # o aviso nunca é gravado
+    assert "blocked" in events and "ok" in events and events[-1] == "next"

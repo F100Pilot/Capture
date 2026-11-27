@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="pt">
+<head>
+<meta charset="utf-8">
+<title>Navegação limitada</title>
+<style>
+  body { margin: 0; font-family: sans-serif; background: #2f4a52; color: #fff; }
+  .slide { display: none; padding: 40px; height: 600px; }
+  .slide.active { display: block; }
+  h1 { font-size: 36px; } p { font-size: 22px; }
+  #next { position: fixed; right: 30px; bottom: 30px; font-size: 18px; padding: 8px 18px; }
+  #modal { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
+  #modal[hidden] { display: none; }
+  .message-window { background: #fff; color: #222; width: 440px; padding: 16px; border-radius: 4px; }
+  .heading { font-weight: bold; border-bottom: 1px solid #ddd; padding-bottom: 8px; }
+  .ok { margin: 12px auto 0; display: block; padding: 6px 24px; }
+</style>
+</head>
+<body>
+<section class="slide active" id="s1"><h1>Objetivos do Curso</h1><p>No final deste curso, estará apto a conhecer as regras.</p></section>
+<section class="slide" id="s2"><h1>Fim</h1><p>Concluiu.</p></section>
+<button id="next">SEGUINTE ›</button>
+<div id="modal" hidden>
+  <div class="message-window" role="alertdialog">
+    <div class="heading">A navegação é limitada.</div>
+    <p class="text">Por favor garanta que leu toda a informação antes de avançar para o próximo slide.</p>
+    <button class="ok"><span>OK</span></button>
+  </div>
+</div>
+<script>
+  // o slide só permite avançar depois de 2,5 s (como uma timeline do Storyline)
+  window.events = [];
+  const started = Date.now();
+  document.getElementById('next').addEventListener('click', () => {
+    if (Date.now() - started < 2500) {
+      window.events.push('blocked');
+      document.getElementById('modal').hidden = false;
+      return;
+    }
+    window.events.push('next');
+    document.getElementById('s1').classList.remove('active');
+    document.getElementById('s2').classList.add('active');
+    document.getElementById('next').hidden = true;
+  });
+  document.querySelector('#modal .ok').addEventListener('click', () => {
+    window.events.push('ok');
+    document.getElementById('modal').hidden = true;
+  });
+</script>
+</body>
+</html>

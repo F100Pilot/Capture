@@ -72,6 +72,44 @@ COLLECT_JS = r"""
 }
 """
 
+# Avisos de "navegação limitada" (ex. Articulate Storyline): o slide ainda não terminou.
+BLOCKER_PATTERN = (
+    r"navega[cç][aã]o\s+(?:[eé]\s+)?(?:limitada|restrita)"
+    r"|navigation\s+(?:is\s+)?(?:restricted|limited)"
+    r"|garanta\s+que\s+(?:leu|viu)|you\s+must\s+(?:complete|view)"
+)
+RESTRICTED_RETRY = 5.0
+
+BLOCKER_JS = r"""
+(src) => {
+  const re = new RegExp(src, 'i');
+  const okRe = /^\s*(ok|fechar|close)\s*$/i;
+  const vis = el => {
+    const r = el.getBoundingClientRect();
+    if (r.width < 2 || r.height < 2) return false;
+    return !el.checkVisibility ||
+      el.checkVisibility({checkOpacity: true, checkVisibilityCSS: true});
+  };
+  document.querySelectorAll('[data-pc-dismiss]').forEach(e => e.removeAttribute('data-pc-dismiss'));
+  for (const el of document.querySelectorAll('body *')) {
+    if (el.childElementCount > 3) continue;
+    const t = el.textContent || '';
+    if (t.length > 300 || !re.test(t) || !vis(el)) continue;
+    let box = el.parentElement;
+    for (let i = 0; i < 6 && box; i++, box = box.parentElement) {
+      const btn = Array.from(box.querySelectorAll('button,[role=button],a,div,span'))
+        .find(b => b.childElementCount <= 2 && okRe.test(b.textContent || '') && vis(b));
+      if (btn) {
+        btn.setAttribute('data-pc-dismiss', '1');
+        return {text: t.replace(/\s+/g, ' ').trim().slice(0, 120), button: true};
+      }
+    }
+    return {text: t.replace(/\s+/g, ' ').trim().slice(0, 120), button: false};
+  }
+  return null;
+}
+"""
+
 CSV_FIELDS = [
     "n", "file", "timestamp_utc", "url", "trigger", "control", "changed_fraction", "duplicate_of",
 ]
@@ -85,13 +123,16 @@ class StopRequested(Exception):
     """Paragem pedida pelo utilizador (interface web)."""
 
 
-def launch_context(pw: Playwright, profile: Path, *, viewport: dict[str, int],
+def launch_context(pw: Playwright, profile: Path, *, viewport: dict[str, int] | None,
                    headless: bool = False, channel: str | None = None, sandbox: bool = True,
                    executable_path: str | None = None) -> BrowserContext:
-    """Browser com perfil persistente (a sessão de login fica no perfil local)."""
+    """Browser com perfil persistente (a sessão de login fica no perfil local).
+
+    viewport=None: sem emulação de tamanho; a página usa o tamanho real da janela.
+    """
     return pw.chromium.launch_persistent_context(
         str(profile), headless=headless, channel=channel, viewport=viewport,
-        chromium_sandbox=sandbox, executable_path=executable_path,
+        no_viewport=viewport is None, chromium_sandbox=sandbox, executable_path=executable_path,
     )
 
 
@@ -272,6 +313,33 @@ class Runner:
             log.debug("  abaixo do mínimo: %.1f frame %d %s",
                       cand.score, cand.frame_index, cand.description)
 
+    def dismiss_blocker(self) -> str | None:
+        """Fecha um aviso de navegação limitada, se visível. Devolve o texto do aviso ou None."""
+        page = self.current_page()
+        for frame in page.frames:
+            try:
+                found = frame.evaluate(BLOCKER_JS, BLOCKER_PATTERN)
+            except PlaywrightError as e:
+                log.debug("Verificação de aviso falhou no frame %s: %s", frame.url, e)
+                continue
+            if not found:
+                continue
+            try:
+                if found["button"]:
+                    frame.locator('[data-pc-dismiss="1"]').first.click(timeout=CLICK_TIMEOUT_MS)
+                else:
+                    page.keyboard.press("Escape")
+            except PlaywrightError as e:
+                log.warning("Não foi possível fechar o aviso: %s", str(e).splitlines()[0])
+            return found["text"]
+        return None
+
+    def _pause(self, seconds: float) -> None:
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline:
+            self._check_stop()
+            time.sleep(0.2)
+
     # --- deteção de mudança ------------------------------------------------------------------
     def _settle(self, png: bytes, thumb: Image.Image) -> tuple[bytes, Image.Image]:
         deadline = time.monotonic() + SETTLE_MAX
@@ -314,8 +382,11 @@ class Runner:
         self.recorder.save(png, ref, self.current_page().url, "start", "", None)
 
         missed = 0
+        blocked_since: float | None = None
         while self.recorder.count < self.opts.max_pages:
             self._check_stop()
+            if self.dismiss_blocker():  # aviso que ficou aberto
+                self._pause(1.0)
             control = self.click_next() if missed < MAX_MISSED_CLICKS else None
             if control is not None:
                 result = self.wait_for_change(ref, self.opts.change_timeout)
@@ -334,7 +405,22 @@ class Runner:
                     log.info("Sem mudança durante %.0f s; a terminar.", self.opts.manual_timeout)
                     return
                 trigger, control = "manual", ""
+
+            blocker = self.dismiss_blocker()
+            if blocker:  # a "mudança" foi o aviso; não gravar e tentar mais tarde
+                now = time.monotonic()
+                blocked_since = blocked_since or now
+                if now - blocked_since > self.opts.manual_timeout:
+                    log.warning("Navegação limitada há mais de %.0f s; passo a modo assistido.",
+                                self.opts.manual_timeout)
+                    missed = MAX_MISSED_CLICKS
+                else:
+                    log.info("Navegação limitada («%s»): aviso fechado; nova tentativa em %.0f s.",
+                             blocker[:60], RESTRICTED_RETRY)
+                self._pause(RESTRICTED_RETRY)
+                continue
             missed = 0
+            blocked_since = None
             png, ref, frac = result
             self.recorder.save(png, ref, self.current_page().url, trigger, control, frac)
         log.info("Atingido o limite de %d páginas.", self.opts.max_pages)
